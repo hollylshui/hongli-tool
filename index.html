@@ -598,6 +598,10 @@ tr:hover td { background: #F9F9FB; }
             <select id="buyFund"></select>
           </div>
           <div class="form-group">
+            <label>交易日期</label>
+            <input type="date" id="buyDate" required>
+          </div>
+          <div class="form-group">
             <label>成交价格（元）</label>
             <input type="number" id="buyPrice" step="0.001" min="0" required>
           </div>
@@ -621,6 +625,10 @@ tr:hover td { background: #F9F9FB; }
           <div class="form-group">
             <label>选择基金</label>
             <select id="sellFund"></select>
+          </div>
+          <div class="form-group">
+            <label>交易日期</label>
+            <input type="date" id="sellDate" required>
           </div>
           <div class="form-group">
             <label>成交价格（元）</label>
@@ -1219,7 +1227,7 @@ function switchTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
-function buy(fundId, price, amount, note) {
+function buy(fundId, price, amount, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
   if (amount > state.cash) { alert('现金不足！当前现金：' + fmtMoney(state.cash)); return; }
@@ -1233,7 +1241,7 @@ function buy(fundId, price, amount, note) {
   state.cash -= realAmount;
   state.history.unshift({
     id: Date.now(),
-    time: new Date().toISOString(),
+    time: date || getLocalDate(),
     type: 'buy',
     fundId: fundId,
     price: Math.round(price * 1000) / 1000,
@@ -1247,7 +1255,7 @@ function buy(fundId, price, amount, note) {
   alert('✅ 买入成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n金额：' + fmtMoney(realAmount) + '\n剩余现金：' + fmtMoney(state.cash));
 }
 
-function sell(fundId, price, shares, note) {
+function sell(fundId, price, shares, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
   if (shares > fund.shares) { alert('份额不足！可卖份额：' + fmtNumber(fund.shares)); return; }
@@ -1257,7 +1265,7 @@ function sell(fundId, price, shares, note) {
   state.cash += amount;
   state.history.unshift({
     id: Date.now(),
-    time: new Date().toISOString(),
+    time: date || getLocalDate(),
     type: 'sell',
     fundId: fundId,
     price: Math.round(price * 1000) / 1000,
@@ -1491,9 +1499,9 @@ function parseStatementFile(file) {
       }
 
       const keys = Object.keys(rows[0]);
-      // 增强日期列识别
+      // 识别“交收日期”为第一优先，因为交收日期才是实际交易日期
       const timeCol = findColumn(keys, [
-        '成交时间', '成交日期', '交易时间', '交易日期', '日期时间', '发生日期', '业务日期',
+        '交收日期', '成交时间', '成交日期', '交易时间', '交易日期', '日期时间', '发生日期', '业务日期',
         '清算日期', '委托时间', '委托日期', '时间', '日期', '业务时间', '记录时间'
       ]);
       const typeCol = findColumn(keys, ['业务类型', '业务名称', '操作', '买卖标志', '交易类型', '类型', '业务']);
@@ -1548,10 +1556,8 @@ function parseStatementFile(file) {
         let amount = parseStatementCell(row, amountCol, 'number') || 0;
         let fee = parseStatementCell(row, feeCol, 'number') || 0;
 
-        // 读取原始日期字符串（可能为 Excel 日期序列号），并转为可读字符串
         let timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
         if (typeof timeRaw === 'number' || /^\d{4,5}$/.test(String(timeRaw))) {
-          // 可能是 Excel 日期序列号
           const serial = Number(timeRaw);
           if (serial > 20000 && serial < 60000) {
             const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
@@ -1560,12 +1566,9 @@ function parseStatementFile(file) {
             }
           }
         }
-        // 统一格式：将 / 替换为 -，去掉中文年月日
         timeRaw = String(timeRaw).replace(/\//g, '-').replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '').trim();
-        // 如果只有日期，保留；如果有时间，保留完整
         if (!timeRaw) timeRaw = getLocalDate();
 
-        // 设置交割单记录的日期字段（原样保存，用于显示）
         const displayTime = timeRaw;
 
         if (!state.funds[code]) {
@@ -1905,6 +1908,9 @@ function resetData() {
 function initTradeForms() {
   refreshFundSelects();
 
+  document.getElementById('buyDate').value = getLocalDate();
+  document.getElementById('sellDate').value = getLocalDate();
+
   function syncPrice(selectId, priceId) {
     document.getElementById(selectId).addEventListener('change', function() {
       const id = this.value;
@@ -1932,12 +1938,14 @@ function initTradeForms() {
   document.getElementById('buyForm').addEventListener('submit', function(e) {
     e.preventDefault();
     const fundId = document.getElementById('buyFund').value;
+    const date = document.getElementById('buyDate').value;
     const price = parseFloat(document.getElementById('buyPrice').value);
     const amount = parseFloat(document.getElementById('buyAmount').value);
     const note = document.getElementById('buyNote').value.trim();
+    if (!date) { alert('请选择交易日期'); return; }
     if (!price || price <= 0) { alert('请输入有效价格'); return; }
     if (!amount || amount <= 0) { alert('请输入有效买入金额'); return; }
-    buy(fundId, price, amount, note);
+    buy(fundId, price, amount, note, date);
     document.getElementById('buyAmount').value = '';
     document.getElementById('buyNote').value = '';
   });
@@ -1945,12 +1953,14 @@ function initTradeForms() {
   document.getElementById('sellForm').addEventListener('submit', function(e) {
     e.preventDefault();
     const fundId = document.getElementById('sellFund').value;
+    const date = document.getElementById('sellDate').value;
     const price = parseFloat(document.getElementById('sellPrice').value);
     const shares = parseFloat(document.getElementById('sellShares').value);
     const note = document.getElementById('sellNote').value.trim();
+    if (!date) { alert('请选择交易日期'); return; }
     if (!price || price <= 0) { alert('请输入有效价格'); return; }
     if (!shares || shares <= 0) { alert('请输入有效卖出份额'); return; }
-    sell(fundId, price, shares, note);
+    sell(fundId, price, shares, note, date);
     document.getElementById('sellShares').value = '';
     document.getElementById('sellAmount').textContent = '¥0.00';
     document.getElementById('sellNote').value = '';
