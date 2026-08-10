@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>红利智投 · 资产管家</title>
-<!-- 引入 SheetJS 用于解析 Excel/CSV -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 <style>
 :root {
@@ -29,8 +28,6 @@ body {
   padding-bottom: 40px;
 }
 .app { max-width: 1100px; margin: 0 auto; padding: 20px 16px; }
-
-/* Header */
 header {
   background: rgba(255,255,255,0.72);
   backdrop-filter: saturate(180%) blur(20px);
@@ -69,8 +66,6 @@ header {
   display: flex; align-items: center; justify-content: center;
 }
 .header-btn:hover { background: rgba(0,0,0,0.1); transform: scale(1.05); }
-
-/* Segmented */
 .segmented {
   display: flex;
   background: rgba(0,0,0,0.04);
@@ -97,16 +92,12 @@ header {
   color: var(--text);
   box-shadow: 0 2px 10px rgba(0,0,0,0.08);
 }
-
-/* Tab */
 .tab-content { display: none; }
 .tab-content.active { display: block; animation: fadeUp 0.35s cubic-bezier(0.4,0,0.2,1); }
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
-
-/* Card */
 .card {
   background: var(--card);
   border-radius: var(--radius);
@@ -124,8 +115,6 @@ header {
   align-items: center;
   gap: 8px;
 }
-
-/* Stats */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -212,8 +201,6 @@ header {
 .edit-box .save-btn:hover { background: #0066D6; }
 .edit-box .cancel-btn { background: rgba(0,0,0,0.06); color: var(--text2); }
 .edit-box .cancel-btn:hover { background: rgba(0,0,0,0.1); }
-
-/* Table */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 th {
@@ -257,8 +244,6 @@ tr:hover td { background: #F9F9FB; }
   word-break: break-all;
   line-height: 1.4;
 }
-
-/* Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -302,8 +287,6 @@ tr:hover td { background: #F9F9FB; }
   transition: all 0.2s;
 }
 .delete-fund-btn:hover { background: #FFD9D6; }
-
-/* Forms */
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -361,8 +344,6 @@ tr:hover td { background: #F9F9FB; }
   border-radius: 14px;
 }
 .estimate strong { color: var(--text); font-size: 18px; }
-
-/* Tags */
 .tag {
   display: inline-block;
   padding: 4px 12px;
@@ -375,8 +356,6 @@ tr:hover td { background: #F9F9FB; }
 .tag-dividend { background: #FFF4E5; color: #B45500; }
 .tag-tax { background: #EEEEEE; color: #666666; }
 .tag-fee { background: #E5F4FF; color: #007AFF; }
-
-/* Price input */
 .price-input {
   width: 90px;
   padding: 7px 10px;
@@ -396,8 +375,6 @@ tr:hover td { background: #F9F9FB; }
   background: #fff;
   box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
 }
-
-/* Settings inputs */
 .settings-input {
   width: 100%;
   min-width: 120px;
@@ -417,8 +394,6 @@ tr:hover td { background: #F9F9FB; }
   box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
 }
 .link-input { min-width: 200px; }
-
-/* Empty */
 .empty {
   text-align: center;
   padding: 32px;
@@ -426,19 +401,13 @@ tr:hover td { background: #F9F9FB; }
   font-size: 14px;
   font-weight: 500;
 }
-
-/* Danger */
 .danger-zone {
   border: 1px solid rgba(255,59,48,0.15);
   background: #FFF9F9;
 }
 .hint { font-size: 12px; color: var(--text2); margin-top: 10px; line-height: 1.5; }
-
-/* Profit/Loss */
 .profit { color: var(--danger); }
 .loss { color: var(--success); }
-
-/* Modal */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -519,8 +488,6 @@ tr:hover td { background: #F9F9FB; }
 }
 .modal-info-item .label { font-size: 12px; color: var(--text2); }
 .modal-info-item .value { font-size: 18px; font-weight: 700; }
-
-/* Responsive */
 @media (max-width: 600px) {
   .app { padding: 12px; }
   header { border-radius: 20px; padding: 16px; }
@@ -588,7 +555,7 @@ tr:hover td { background: #F9F9FB; }
       <div class="stat-card">
         <div class="stat-label">🧧 累计分红</div>
         <div class="stat-value" id="totalDividend">¥0.00</div>
-        <div class="stat-sub">已领取到账</div>
+        <div class="stat-sub">已扣除税补缴</div>
       </div>
     </div>
 
@@ -954,7 +921,6 @@ function downloadCSV(filename, headers, rows) {
   saveFile(filename, BOM + content, 'text/csv');
 }
 
-// 编辑现金/总资产
 function toggleEdit(field) {
   const box = document.getElementById('editBox-' + field);
   const display = document.getElementById(field + 'Display');
@@ -995,7 +961,6 @@ function cancelEdit(field) {
   display.style.opacity = 1;
 }
 
-// 渲染：账户
 function renderAccount() {
   const totalAsset = getTotalAsset();
   const stockVal = getStockValue();
@@ -1008,7 +973,6 @@ function renderAccount() {
   const totalDividend = state.dividends.reduce(function(s, d) { return s + (d.amount || 0); }, 0);
   document.getElementById('totalDividend').textContent = fmtMoney(totalDividend);
 
-  // 未设置初始资金时，仅显示总资产
   if (state.initialCapital > 0) {
     const initProfit = totalAsset - state.initialCapital;
     const initRate = (initProfit / state.initialCapital * 100);
@@ -1057,7 +1021,6 @@ function renderAccount() {
   fpEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
 }
 
-// 渲染：分红
 function renderDividend() {
   const tbody = document.getElementById('dividendTableBody');
   if (!state.dividends.length) {
@@ -1067,17 +1030,17 @@ function renderDividend() {
   let html = '';
   for (let i = 0; i < state.dividends.length; i++) {
     const d = state.dividends[i];
+    const isNeg = d.amount < 0;
     html += '<tr>';
     html += '<td>' + d.time + '</td>';
     html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + d.fundId + '\')">' + fundLabel(d.fundId) + '</button></td>';
-    html += '<td style="color:var(--warning);font-weight:600;">+' + fmtMoney(d.amount) + '</td>';
+    html += '<td style="color:' + (isNeg ? 'var(--danger)' : 'var(--warning)') + ';font-weight:600;">' + (isNeg ? '-' : '+') + fmtMoney(Math.abs(d.amount)) + (isNeg ? '（税补缴）' : '') + '</td>';
     html += '<td><button class="btn btn-danger btn-sm" onclick="deleteDividend(' + d.id + ')">删除</button></td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
 }
 
-// 渲染：历史
 function renderHistory() {
   const tbody = document.getElementById('historyTableBody');
   if (!state.history.length) {
@@ -1108,7 +1071,6 @@ function renderHistory() {
   tbody.innerHTML = html;
 }
 
-// 渲染：设置
 function renderSettings() {
   const tbody = document.getElementById('fundSettingsTable');
   let html = '';
@@ -1133,7 +1095,6 @@ function renderAll() {
   renderSettings();
 }
 
-// Tab 切换
 function switchTab(tab) {
   const contents = document.querySelectorAll('.tab-content');
   for (let i = 0; i < contents.length; i++) contents[i].classList.remove('active');
@@ -1149,7 +1110,6 @@ function switchTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
-// 买入
 function buy(fundId, price, amount, note) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
@@ -1177,7 +1137,6 @@ function buy(fundId, price, amount, note) {
   alert('✅ 买入成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n金额：' + fmtMoney(realAmount) + '\n剩余现金：' + fmtMoney(state.cash));
 }
 
-// 卖出
 function sell(fundId, price, shares, note) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
@@ -1201,7 +1160,6 @@ function sell(fundId, price, shares, note) {
   alert('✅ 卖出成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n到账：' + fmtMoney(amount) + '\n当前现金：' + fmtMoney(state.cash));
 }
 
-// 分红
 function addDividend(fundId, date, amount) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
@@ -1231,27 +1189,32 @@ function deleteDividend(id) {
     if (state.dividends[i].id === id) { div = state.dividends[i]; break; }
   }
   if (!div) return;
-  if (!confirm('删除该分红记录，金额将从现金中扣除，确认继续？')) return;
+
+  const isTax = div.amount < 0;
+  const confirmMsg = isTax ? '删除该税补缴记录，对应金额将退回现金。确认继续？' : '删除该分红记录，金额将从现金中扣除。确认继续？';
+  if (!confirm(confirmMsg)) return;
+
   state.cash -= div.amount;
+
   const newDividends = [];
   for (let i = 0; i < state.dividends.length; i++) {
     if (state.dividends[i].id !== id) newDividends.push(state.dividends[i]);
   }
   state.dividends = newDividends;
+
   const newHistory = [];
   for (let i = 0; i < state.history.length; i++) {
     const h = state.history[i];
-    if (!(h.type === 'dividend' && (h.dividendId === id || (h.time === div.time && h.amount === div.amount && h.fundId === div.fundId)))) {
-      newHistory.push(h);
-    }
+    const isTarget = h.dividendId === id || (h.type === 'dividend' && h.time === div.time && h.amount === div.amount && h.fundId === div.fundId);
+    if (!isTarget) newHistory.push(h);
   }
   state.history = newHistory;
+
   save();
   renderAll();
-  alert('已删除分红，现金已相应扣除。');
+  alert(isTax ? '已删除税补缴记录，现金已退回。' : '已删除分红，现金已相应扣除。');
 }
 
-// 价格修改
 document.addEventListener('change', function(e) {
   if (e.target.classList && e.target.classList.contains('price-input')) {
     const id = e.target.dataset.id;
@@ -1264,7 +1227,6 @@ document.addEventListener('change', function(e) {
   }
 });
 
-// 跳转卖出
 function goToSell(fundId) {
   switchTab('trade');
   document.getElementById('sellFund').value = fundId;
@@ -1274,7 +1236,6 @@ function goToSell(fundId) {
   document.getElementById('sellShares').focus();
 }
 
-// 导出 / 导入
 function exportJSON() {
   const data = JSON.stringify(Object.assign({}, state, { exportedAt: new Date().toISOString() }), null, 2);
   const date = new Date().toISOString().split('T')[0];
@@ -1349,8 +1310,6 @@ document.getElementById('importFile').addEventListener('change', function(e) {
   e.target.value = '';
 });
 
-// ======= 交割单解析功能 =======
-
 function findColumn(keys, candidates) {
   for (let i = 0; i < candidates.length; i++) {
     for (let j = 0; j < keys.length; j++) {
@@ -1417,7 +1376,6 @@ function parseStatementFile(file) {
         return;
       }
 
-      // 自动识别列
       const keys = Object.keys(rows[0]);
       const timeCol = findColumn(keys, ['成交时间', '成交日期', '交易时间', '日期时间', '时间', '日期', '委托时间']);
       const typeCol = findColumn(keys, ['业务类型', '业务名称', '操作', '买卖标志', '交易类型', '类型', '业务']);
@@ -1440,7 +1398,6 @@ function parseStatementFile(file) {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
 
-        // 判断类型（先识别税费和杂费，再识别买卖/分红）
         const typeText = String(parseStatementCell(row, typeCol, 'string') || '');
         let tradeType = null;
         if (typeText.match(/税补缴|补缴税|红利税|股息税|分红税/)) {
@@ -1473,7 +1430,6 @@ function parseStatementFile(file) {
         let amount = parseStatementCell(row, amountCol, 'number') || 0;
         let fee = parseStatementCell(row, feeCol, 'number') || 0;
 
-        // 创建基金（如果不存在）
         if (!state.funds[code]) {
           state.funds[code] = {
             id: code,
@@ -1485,7 +1441,7 @@ function parseStatementFile(file) {
           };
         }
 
-        // 处理股息红利税补缴 / 港股通组合费：作为扣款处理，不影响持仓和分红
+        // 处理股息红利税补缴 / 港股通组合费
         if (tradeType === 'tax' || tradeType === 'fee') {
           const timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
           let timeISO = timeRaw;
@@ -1495,6 +1451,9 @@ function parseStatementFile(file) {
           }
           const deductAmount = Math.abs(amount) || 0;
           state.cash -= deductAmount;
+
+          // 税补缴需要从累计分红中抵扣；港股通组合费不影响累计分红
+          const did = Date.now() + 1;
           safeAddHistory({
             id: Date.now(),
             time: timeISO,
@@ -1503,13 +1462,23 @@ function parseStatementFile(file) {
             price: 0,
             shares: 0,
             amount: deductAmount,
-            note: tradeType === 'tax' ? '🗂 红利税补缴' : '🧾 港股通组合费'
+            note: tradeType === 'tax' ? '🗂 红利税补缴' : '🧾 港股通组合费',
+            dividendId: tradeType === 'tax' ? did : undefined
           });
+
+          if (tradeType === 'tax' && deductAmount > 0) {
+            state.dividends.unshift({
+              id: did,
+              time: timeRaw,
+              fundId: code,
+              amount: -deductAmount
+            });
+          }
+
           successCount++;
           continue;
         }
 
-        // 处理成交金额和发生金额的符号
         let cashChange = 0;
         if (tradeType === 'buy') {
           if (amountCol && amount < 0) {
@@ -1523,7 +1492,7 @@ function parseStatementFile(file) {
           } else {
             cashChange = amount - fee;
           }
-        } else { // dividend
+        } else {
           cashChange = amount > 0 ? amount : (amount + fee);
         }
 
@@ -1577,7 +1546,7 @@ function parseStatementFile(file) {
             note: '📥 交割单导入'
           });
           state.prices[code] = price || state.prices[code] || 0;
-        } else { // dividend
+        } else {
           const dividendAmount = Math.abs(amount) || (shares * price);
           state.cash += dividendAmount;
           const did = Date.now();
@@ -1637,9 +1606,6 @@ document.getElementById('statementFile').addEventListener('change', function(e) 
   e.target.value = '';
 });
 
-// ======= 交割单解析结束 =======
-
-// 设置保存 / 重置
 function saveFundSettings() {
   const nameInputs = document.querySelectorAll('.fund-name-input');
   for (let i = 0; i < nameInputs.length; i++) {
@@ -1665,7 +1631,6 @@ function saveFundSettings() {
   alert('✅ 基金参数已保存！');
 }
 
-// 添加基金
 function addFund() {
   const code = document.getElementById('newFundCode').value.trim();
   const name = document.getElementById('newFundName').value.trim();
@@ -1700,7 +1665,6 @@ function addFund() {
   alert('✅ 基金 ' + name + '（' + code + '）已添加！');
 }
 
-// 删除基金
 function deleteFund(id) {
   const fund = state.funds[id];
   if (!fund) return;
@@ -1727,7 +1691,6 @@ function deleteFund(id) {
   alert('🗑️ 基金 ' + fund.name + ' 已删除。');
 }
 
-// 刷新下拉框
 function refreshFundSelects() {
   let options = '';
   for (const id in state.funds) {
@@ -1745,7 +1708,6 @@ function refreshFundSelects() {
   document.getElementById('sellAmount').textContent = '¥0.00';
 }
 
-// 基金详情模态框
 function openFundDetail(id) {
   const fund = state.funds[id];
   if (!fund) { alert('该基金已不存在'); return; }
@@ -1801,7 +1763,6 @@ function closeFundDetail() {
   document.getElementById('fundModal').style.display = 'none';
 }
 
-// 重置数据
 function resetData() {
   if (!confirm('⚠️ 确定清空所有数据吗？所有持仓、交易和分红记录将被清空！')) return;
   if (!confirm('⚠️ 再次确认：此操作不可撤销！')) return;
@@ -1812,7 +1773,6 @@ function resetData() {
   alert('🔄 已清空所有数据，现金余额为 0，请重新导入交割单或手动录入。');
 }
 
-// 初始化
 function initTradeForms() {
   refreshFundSelects();
 
