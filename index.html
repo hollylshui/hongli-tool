@@ -684,7 +684,7 @@ tr:hover td { background: #F9F9FB; }
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>时间</th><th>类型</th><th>基金</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th></tr>
+            <tr><th>日期</th><th>类型</th><th>基金</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th></tr>
           </thead>
           <tbody id="historyTableBody"></tbody>
         </table>
@@ -773,7 +773,7 @@ tr:hover td { background: #F9F9FB; }
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>时间</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th></tr>
+          <tr><th>日期</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th></tr>
         </thead>
         <tbody id="modalFundHistoryBody"></tbody>
       </table>
@@ -909,6 +909,13 @@ function formatDateTime(iso) {
   const p = function(n) { return String(n).padStart(2, '0'); };
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
+function formatHistoryTime(t) {
+  if (typeof t !== 'string') return formatDateTime(t);
+  if (t.indexOf('T') >= 0 || t.indexOf(' ') >= 0) {
+    return formatDateTime(t);
+  }
+  return t;
+}
 function getLocalDate() {
   const d = new Date();
   const p = function(n) { return String(n).padStart(2, '0'); };
@@ -983,14 +990,12 @@ function fundHasHistory(id) {
   return false;
 }
 
-// 计算单个基金收益统计
 function computeFundStats(id) {
   let shares = 0;
   let avgCost = 0;
   let realizedPNL = 0;
   let totalDividend = 0;
 
-  // history 是最新在前，需要反转为正序
   const records = [];
   for (let i = state.history.length - 1; i >= 0; i--) {
     if (state.history[i].fundId === id) records.push(state.history[i]);
@@ -1017,7 +1022,6 @@ function computeFundStats(id) {
       realizedPNL += netAmount - costBasis;
       shares -= sellShares;
       if (shares < 0.001) shares = 0;
-      // 成本价不变（按比例卖出）
     } else if (h.type === 'dividend') {
       totalDividend += h.amount || 0;
     } else if (h.type === 'tax') {
@@ -1055,7 +1059,6 @@ function renderAccount() {
   const buyHint = document.getElementById('buyCashHint');
   if (buyHint) buyHint.textContent = fmtMoney(state.cash);
 
-  // 当前持仓表
   let html = '';
   const closedFunds = [];
 
@@ -1097,7 +1100,6 @@ function renderAccount() {
   fpEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
   fpEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
 
-  // 已清仓表
   const closedCard = document.getElementById('closedPositionsCard');
   const closedBody = document.getElementById('closedTableBody');
 
@@ -1160,7 +1162,7 @@ function renderHistory() {
     const h = state.history[i];
     const tInfo = typeMap[h.type] || [h.type, ''];
     html += '<tr>';
-    html += '<td style="white-space:nowrap;">' + (h.type === 'dividend' ? h.time : formatDateTime(h.time)) + '</td>';
+    html += '<td style="white-space:nowrap;">' + formatHistoryTime(h.time) + '</td>';
     html += '<td><span class="tag ' + tInfo[1] + '">' + tInfo[0] + '</span></td>';
     html += '<td>';
     if (state.funds[h.fundId]) {
@@ -1369,14 +1371,14 @@ function exportHoldingsCSV() {
   alert('✅ 持仓CSV已导出！');
 }
 function exportHistoryCSV() {
-  const headers = ['时间', '类型', '基金代码', '基金名称', '价格', '份额', '金额', '心得'];
+  const headers = ['日期', '类型', '基金代码', '基金名称', '价格', '份额', '金额', '心得'];
   const typeMap = { buy: '买入', sell: '卖出', dividend: '分红', tax: '税补缴', fee: '组合费' };
   const rows = [];
   for (let i = 0; i < state.history.length; i++) {
     const h = state.history[i];
     const f = state.funds[h.fundId] || {};
     rows.push([
-      h.type === 'dividend' ? h.time : formatDateTime(h.time),
+      formatHistoryTime(h.time),
       typeMap[h.type] || h.type,
       h.fundId,
       f.name || '',
@@ -1489,7 +1491,11 @@ function parseStatementFile(file) {
       }
 
       const keys = Object.keys(rows[0]);
-      const timeCol = findColumn(keys, ['成交时间', '成交日期', '交易时间', '日期时间', '时间', '日期', '委托时间']);
+      // 增强日期列识别
+      const timeCol = findColumn(keys, [
+        '成交时间', '成交日期', '交易时间', '交易日期', '日期时间', '发生日期', '业务日期',
+        '清算日期', '委托时间', '委托日期', '时间', '日期', '业务时间', '记录时间'
+      ]);
       const typeCol = findColumn(keys, ['业务类型', '业务名称', '操作', '买卖标志', '交易类型', '类型', '业务']);
       const codeCol = findColumn(keys, ['资金账号', '证券代码', '基金代码', '代码']);
       const nameCol = findColumn(keys, ['证券名称', '基金名称', '名称']);
@@ -1542,6 +1548,26 @@ function parseStatementFile(file) {
         let amount = parseStatementCell(row, amountCol, 'number') || 0;
         let fee = parseStatementCell(row, feeCol, 'number') || 0;
 
+        // 读取原始日期字符串（可能为 Excel 日期序列号），并转为可读字符串
+        let timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
+        if (typeof timeRaw === 'number' || /^\d{4,5}$/.test(String(timeRaw))) {
+          // 可能是 Excel 日期序列号
+          const serial = Number(timeRaw);
+          if (serial > 20000 && serial < 60000) {
+            const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+            if (!isNaN(d.getTime())) {
+              timeRaw = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+            }
+          }
+        }
+        // 统一格式：将 / 替换为 -，去掉中文年月日
+        timeRaw = String(timeRaw).replace(/\//g, '-').replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '').trim();
+        // 如果只有日期，保留；如果有时间，保留完整
+        if (!timeRaw) timeRaw = getLocalDate();
+
+        // 设置交割单记录的日期字段（原样保存，用于显示）
+        const displayTime = timeRaw;
+
         if (!state.funds[code]) {
           state.funds[code] = {
             id: code,
@@ -1555,19 +1581,13 @@ function parseStatementFile(file) {
 
         // 处理股息红利税补缴 / 港股通组合费
         if (tradeType === 'tax' || tradeType === 'fee') {
-          const timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
-          let timeISO = timeRaw;
-          const dateObj = new Date(timeRaw);
-          if (!isNaN(dateObj.getTime())) {
-            timeISO = dateObj.toISOString();
-          }
           const deductAmount = Math.abs(amount) || 0;
           state.cash -= deductAmount;
 
           const did = Date.now() + 1;
           safeAddHistory({
             id: Date.now(),
-            time: timeISO,
+            time: displayTime,
             type: tradeType,
             fundId: code,
             price: 0,
@@ -1580,7 +1600,7 @@ function parseStatementFile(file) {
           if (tradeType === 'tax' && deductAmount > 0) {
             state.dividends.unshift({
               id: did,
-              time: timeRaw,
+              time: displayTime,
               fundId: code,
               amount: -deductAmount
             });
@@ -1608,12 +1628,6 @@ function parseStatementFile(file) {
         }
 
         const fund = state.funds[code];
-        const timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
-        let timeISO = timeRaw;
-        const dateObj = new Date(timeRaw);
-        if (!isNaN(dateObj.getTime())) {
-          timeISO = dateObj.toISOString();
-        }
 
         if (tradeType === 'buy') {
           const buyShares = Math.abs(shares);
@@ -1627,7 +1641,7 @@ function parseStatementFile(file) {
           state.cash += cashChange;
           safeAddHistory({
             id: Date.now(),
-            time: timeISO,
+            time: displayTime,
             type: 'buy',
             fundId: code,
             price: Math.round(price * 1000) / 1000,
@@ -1649,7 +1663,7 @@ function parseStatementFile(file) {
           state.cash += cashChange;
           safeAddHistory({
             id: Date.now(),
-            time: timeISO,
+            time: displayTime,
             type: 'sell',
             fundId: code,
             price: Math.round(price * 1000) / 1000,
@@ -1665,13 +1679,13 @@ function parseStatementFile(file) {
           const did = Date.now();
           state.dividends.unshift({
             id: did,
-            time: timeRaw,
+            time: displayTime,
             fundId: code,
             amount: Math.round(dividendAmount * 100) / 100
           });
           safeAddHistory({
             id: Date.now(),
-            time: timeISO,
+            time: displayTime,
             type: 'dividend',
             fundId: code,
             price: 0,
@@ -1860,7 +1874,7 @@ function openFundDetail(id) {
       const h = historyItems[i];
       const tInfo = typeMap[h.type] || [h.type, ''];
       histHtml += '<tr>';
-      histHtml += '<td style="white-space:nowrap;">' + (h.type === 'dividend' ? h.time : formatDateTime(h.time)) + '</td>';
+      histHtml += '<td style="white-space:nowrap;">' + formatHistoryTime(h.time) + '</td>';
       histHtml += '<td><span class="tag ' + tInfo[1] + '">' + tInfo[0] + '</span></td>';
       histHtml += '<td>' + (h.price ? fmtMoney(h.price) : '—') + '</td>';
       histHtml += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
