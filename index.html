@@ -774,8 +774,8 @@ tr:hover td { background: #F9F9FB; }
 
     <div class="card danger-zone">
       <div class="card-title">⚠️ 危险操作</div>
-      <button class="btn btn-danger" onclick="resetData()">🔄 恢复初始状态</button>
-      <p class="hint">清空所有持仓、交易、分红，重置为 10 万元初始现金。</p>
+      <button class="btn btn-danger" onclick="resetData()">🔄 清空所有数据</button>
+      <p class="hint">清空所有持仓、交易和分红记录，现金余额归零，便于重新开始。</p>
     </div>
   </div>
 </div>
@@ -818,9 +818,9 @@ const DEFAULT_PRICES = {
 
 function createDefaultState() {
   return {
-    version: 2,
-    initialCapital: 100000,
-    cash: 100000,
+    version: 3,
+    initialCapital: 0,
+    cash: 0,
     funds: JSON.parse(JSON.stringify(DEFAULT_FUNDS)),
     prices: Object.assign({}, DEFAULT_PRICES),
     history: [],
@@ -841,8 +841,8 @@ function loadState() {
       const p = JSON.parse(saved);
       if (p && p.funds && typeof p.cash === 'number') {
         state = {
-          version: 2,
-          initialCapital: typeof p.initialCapital === 'number' ? p.initialCapital : 100000,
+          version: 3,
+          initialCapital: typeof p.initialCapital === 'number' ? p.initialCapital : 0,
           cash: p.cash,
           funds: mergeFunds(p.funds),
           prices: Object.assign({}, DEFAULT_PRICES, p.prices || {}),
@@ -1008,9 +1008,14 @@ function renderAccount() {
   const totalDividend = state.dividends.reduce(function(s, d) { return s + (d.amount || 0); }, 0);
   document.getElementById('totalDividend').textContent = fmtMoney(totalDividend);
 
-  const initProfit = totalAsset - state.initialCapital;
-  const initRate = state.initialCapital ? (initProfit / state.initialCapital * 100) : 0;
-  document.getElementById('totalProfit').textContent = '较初始 ' + (initProfit >= 0 ? '+' : '') + fmtMoney(initProfit) + ' (' + (initRate >= 0 ? '+' : '') + initRate.toFixed(2) + '%)';
+  // 未设置初始资金时，仅显示总资产
+  if (state.initialCapital > 0) {
+    const initProfit = totalAsset - state.initialCapital;
+    const initRate = (initProfit / state.initialCapital * 100);
+    document.getElementById('totalProfit').textContent = '较初始 ' + (initProfit >= 0 ? '+' : '') + fmtMoney(initProfit) + ' (' + (initRate >= 0 ? '+' : '') + initRate.toFixed(2) + '%)';
+  } else {
+    document.getElementById('totalProfit').textContent = '当前总资产：' + fmtMoney(totalAsset);
+  }
 
   const fpEl = document.getElementById('floatProfit');
   fpEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
@@ -1324,8 +1329,8 @@ document.getElementById('importFile').addEventListener('change', function(e) {
       }
       if (!confirm('导入将覆盖当前所有数据，确认继续？')) return;
       state = {
-        version: 2,
-        initialCapital: typeof data.initialCapital === 'number' ? data.initialCapital : 100000,
+        version: 3,
+        initialCapital: typeof data.initialCapital === 'number' ? data.initialCapital : 0,
         cash: data.cash,
         funds: mergeFunds(data.funds),
         prices: Object.assign({}, DEFAULT_PRICES, data.prices || {}),
@@ -1798,13 +1803,13 @@ function closeFundDetail() {
 
 // 重置数据
 function resetData() {
-  if (!confirm('⚠️ 确定恢复初始状态吗？所有持仓、交易和分红记录将被清空！')) return;
+  if (!confirm('⚠️ 确定清空所有数据吗？所有持仓、交易和分红记录将被清空！')) return;
   if (!confirm('⚠️ 再次确认：此操作不可撤销！')) return;
   state = createDefaultState();
   save();
   renderAll();
   refreshFundSelects();
-  alert('🔄 已恢复初始状态（10万元现金）');
+  alert('🔄 已清空所有数据，现金余额为 0，请重新导入交割单或手动录入。');
 }
 
 // 初始化
