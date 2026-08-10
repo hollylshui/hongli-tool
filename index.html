@@ -373,6 +373,8 @@ tr:hover td { background: #F9F9FB; }
 .tag-buy { background: #E8F9EC; color: #1A8C3A; }
 .tag-sell { background: #FFEBE9; color: #C6221A; }
 .tag-dividend { background: #FFF4E5; color: #B45500; }
+.tag-tax { background: #EEEEEE; color: #666666; }
+.tag-fee { background: #E5F4FF; color: #007AFF; }
 
 /* Price input */
 .price-input {
@@ -1077,7 +1079,7 @@ function renderHistory() {
     tbody.innerHTML = '<tr><td colspan="7"><div class="empty">暂无交易记录</div></td></tr>';
     return;
   }
-  const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'] };
+  const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'], tax: ['税补缴', 'tag-tax'], fee: ['组合费', 'tag-fee'] };
   let html = '';
   for (let i = 0; i < state.history.length; i++) {
     const h = state.history[i];
@@ -1290,7 +1292,7 @@ function exportHoldingsCSV() {
 }
 function exportHistoryCSV() {
   const headers = ['时间', '类型', '基金代码', '基金名称', '价格', '份额', '金额', '心得'];
-  const typeMap = { buy: '买入', sell: '卖出', dividend: '分红' };
+  const typeMap = { buy: '买入', sell: '卖出', dividend: '分红', tax: '税补缴', fee: '组合费' };
   const rows = [];
   for (let i = 0; i < state.history.length; i++) {
     const h = state.history[i];
@@ -1433,13 +1435,20 @@ function parseStatementFile(file) {
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
 
-        // 判断类型
+        // 判断类型（先识别税费和杂费，再识别买卖/分红）
         const typeText = String(parseStatementCell(row, typeCol, 'string') || '');
         let tradeType = null;
-        if (typeText.match(/买|申购|买入|转入/)) tradeType = 'buy';
-        else if (typeText.match(/卖|赎回|卖出|转出/)) tradeType = 'sell';
-        else if (typeText.match(/分|红利|股息|股利/)) tradeType = 'dividend';
-        else {
+        if (typeText.match(/税补缴|补缴税|红利税|股息税|分红税/)) {
+          tradeType = 'tax';
+        } else if (typeText.match(/组合费|杂费|费用收取|账户管理费/)) {
+          tradeType = 'fee';
+        } else if (typeText.match(/买|申购|买入|转入/)) {
+          tradeType = 'buy';
+        } else if (typeText.match(/卖|赎回|卖出|转出/)) {
+          tradeType = 'sell';
+        } else if (typeText.match(/分红|红利|股息|股利/)) {
+          tradeType = 'dividend';
+        } else {
           skipCount++;
           errors.push('第' + (i+1) + '行：无法识别业务类型「' + typeText + '」');
           continue;
@@ -1459,26 +1468,6 @@ function parseStatementFile(file) {
         let amount = parseStatementCell(row, amountCol, 'number') || 0;
         let fee = parseStatementCell(row, feeCol, 'number') || 0;
 
-        // 处理成交金额和发生金额的符号
-        // 如果金额列为“发生金额”，可能已经包含了费用和方向。我们优先使用 amountCol 的值作为发生金额。
-        // 但为了安全，我们根据类型计算现金变动。
-        let cashChange = 0;
-        if (tradeType === 'buy') {
-          if (amountCol && amount < 0) { // 发生金额为负表示资金流出
-            cashChange = amount; // 为负
-          } else {
-            cashChange = -(amount + fee);
-          }
-        } else if (tradeType === 'sell') {
-          if (amountCol && amount > 0) {
-            cashChange = amount; // 为正
-          } else {
-            cashChange = amount - fee;
-          }
-        } else { // dividend
-          cashChange = amount > 0 ? amount : (amount + fee); // 一般无费用
-        }
-
         // 创建基金（如果不存在）
         if (!state.funds[code]) {
           state.funds[code] = {
@@ -1491,6 +1480,48 @@ function parseStatementFile(file) {
           };
         }
 
+        // 处理股息红利税补缴 / 港股通组合费：作为扣款处理，不影响持仓和分红
+        if (tradeType === 'tax' || tradeType === 'fee') {
+          const timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
+          let timeISO = timeRaw;
+          const dateObj = new Date(timeRaw);
+          if (!isNaN(dateObj.getTime())) {
+            timeISO = dateObj.toISOString();
+          }
+          const deductAmount = Math.abs(amount) || 0;
+          state.cash -= deductAmount;
+          safeAddHistory({
+            id: Date.now(),
+            time: timeISO,
+            type: tradeType,
+            fundId: code,
+            price: 0,
+            shares: 0,
+            amount: deductAmount,
+            note: tradeType === 'tax' ? '🗂 红利税补缴' : '🧾 港股通组合费'
+          });
+          successCount++;
+          continue;
+        }
+
+        // 处理成交金额和发生金额的符号
+        let cashChange = 0;
+        if (tradeType === 'buy') {
+          if (amountCol && amount < 0) {
+            cashChange = amount;
+          } else {
+            cashChange = -(amount + fee);
+          }
+        } else if (tradeType === 'sell') {
+          if (amountCol && amount > 0) {
+            cashChange = amount;
+          } else {
+            cashChange = amount - fee;
+          }
+        } else { // dividend
+          cashChange = amount > 0 ? amount : (amount + fee);
+        }
+
         const fund = state.funds[code];
         const timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
         let timeISO = timeRaw;
@@ -1500,23 +1531,15 @@ function parseStatementFile(file) {
         }
 
         if (tradeType === 'buy') {
-          // 份额
           const buyShares = Math.abs(shares);
-          // 买入总成本（含费用）
           const buyCost = (amount !== 0 ? Math.abs(amount) : (price * buyShares)) + fee;
-          // 更新持仓
           const oldShares = fund.shares;
           const oldCost = fund.avgCost * oldShares;
           const newShares = oldShares + buyShares;
           const newCost = oldCost + buyCost;
           fund.shares = Math.round(newShares * 100) / 100;
           fund.avgCost = Math.round((newCost / newShares) * 1000) / 1000;
-          // 现金变动
           state.cash += cashChange;
-          if (state.cash < 0 && oldShares === 0) {
-            // 说明之前没有持仓，且现金不足（可能是初始数据没有现金），这里我们允许负数但记录警告
-          }
-          // 记录历史
           safeAddHistory({
             id: Date.now(),
             time: timeISO,
@@ -1538,7 +1561,6 @@ function parseStatementFile(file) {
           fund.shares = Math.round((fund.shares - sellShares) * 100) / 100;
           if (fund.shares < 0.001) { fund.shares = 0; fund.avgCost = 0; }
           state.cash += cashChange;
-          // 记录历史
           safeAddHistory({
             id: Date.now(),
             time: timeISO,
@@ -1751,7 +1773,7 @@ function openFundDetail(id) {
   if (!historyItems.length) {
     histHtml = '<tr><td colspan="6"><div class="empty">该基金暂无交易记录</div></td></tr>';
   } else {
-    const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'] };
+    const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'], tax: ['税补缴', 'tag-tax'], fee: ['组合费', 'tag-fee'] };
     for (let i = 0; i < historyItems.length; i++) {
       const h = historyItems[i];
       const tInfo = typeMap[h.type] || [h.type, ''];
