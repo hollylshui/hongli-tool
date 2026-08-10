@@ -1,927 +1,1015 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>红利智投 · 分步加仓策略助手</title>
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #f0f4ff, #e6f0ff, #f9efff);
-            padding: 24px;
-            color: #1a1a2e;
-        }
-        .glass {
-            background: rgba(255, 255, 255, 0.55);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.12);
-            padding: 24px;
-            margin-bottom: 20px;
-        }
-        h1 {
-            font-size: 30px;
-            font-weight: 800;
-            background: linear-gradient(90deg, #2563eb, #7c3aed);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            display: inline-block;
-        }
-        .version-badge {
-            display: inline-block;
-            background: linear-gradient(90deg, #2563eb, #7c3aed);
-            color: white;
-            font-size: 12px;
-            font-weight: 600;
-            padding: 2px 10px;
-            border-radius: 20px;
-            margin-left: 8px;
-            vertical-align: middle;
-        }
-        .subtitle {
-            color: #6b7280;
-            font-size: 14px;
-            margin-top: 4px;
-        }
-        .notice-bar {
-            background: rgba(37, 99, 235, 0.1);
-            border: 1px solid rgba(37, 99, 235, 0.2);
-            border-radius: 12px;
-            padding: 10px 16px;
-            font-size: 13px;
-            color: #1d4ed8;
-            margin: 12px 0 20px;
-            backdrop-filter: blur(8px);
-        }
-        .top-stats {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin: 20px 0;
-        }
-        .stat-card {
-            background: rgba(255, 255, 255, 0.5);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-radius: 16px;
-            padding: 16px 20px;
-            border: 1px solid rgba(255, 255, 255, 0.7);
-            box-shadow: 0 4px 12px rgba(31, 38, 135, 0.08);
-        }
-        .stat-label {
-            font-size: 12px;
-            color: #6b7280;
-            margin-bottom: 6px;
-        }
-        .stat-value {
-            font-size: 22px;
-            font-weight: 700;
-        }
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 18px;
-        }
-        @media (max-width: 900px) {
-            .grid-2 {
-                grid-template-columns: 1fr;
-            }
-            .top-stats {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        th,
-        td {
-            padding: 8px 6px;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-            text-align: left;
-        }
-        th {
-            font-weight: 600;
-            color: #4b5563;
-            background: rgba(255, 255, 255, 0.3);
-        }
-        .badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .badge-red { background: #fde8e8; color: #dc2626; }
-        .badge-yellow { background: #fef3c7; color: #b45309; }
-        .badge-blue { background: #dbeafe; color: #1d4ed8; }
-        .badge-green { background: #d1fae5; color: #047857; }
-        button {
-            padding: 8px 14px;
-            border: none;
-            border-radius: 10px;
-            font-size: 13px;
-            cursor: pointer;
-            background: linear-gradient(90deg, #2563eb, #7c3aed);
-            color: white;
-            font-weight: 500;
-            transition: transform 0.1s;
-        }
-        button.secondary {
-            background: rgba(255, 255, 255, 0.8);
-            color: #2563eb;
-            border: 1px solid #cbd5e1;
-            backdrop-filter: blur(6px);
-        }
-        button.danger {
-            background: linear-gradient(90deg, #ef4444, #f97316);
-        }
-        button:hover { transform: scale(1.02); }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        input,
-        select {
-            background: rgba(255, 255, 255, 0.7);
-            border: 1px solid #e5e7eb;
-            border-radius: 10px;
-            padding: 8px 10px;
-            font-size: 14px;
-            color: #1a1a2e;
-            margin: 4px 0;
-        }
-        input:focus {
-            outline: 2px solid #7c3aed55;
-        }
-        .fund-card {
-            background: rgba(255, 255, 255, 0.5);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            padding: 18px;
-            border: 1px solid rgba(255, 255, 255, 0.6);
-            margin-bottom: 16px;
-        }
-        .fund-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-        }
-        .fund-name { font-size: 16px; font-weight: 700; }
-        .fund-code { font-size: 13px; color: #6b7280; }
-        .source-link {
-            font-size: 12px;
-            color: #2563eb;
-            text-decoration: none;
-            word-break: break-all;
-        }
-        .source-missing { font-size: 12px; color: #dc2626; }
-        .div-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-            padding: 4px 0;
-            border-bottom: 1px dashed rgba(0, 0, 0, 0.05);
-        }
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(4px);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 999;
-        }
-        .modal {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(20px);
-            border-radius: 20px;
-            padding: 24px;
-            width: 480px;
-            max-width: 95%;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
-        }
-        .hidden { display: none; }
-        .actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-            flex-wrap: wrap;
-        }
-        .log-table {
-            max-height: 260px;
-            overflow-y: auto;
-        }
-        .importance {
-            font-size: 12px;
-            color: #6b7280;
-            margin-top: 4px;
-        }
-        .btn-row {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .price-input { width: 100px; }
-        .backup-btns {
-            display: flex;
-            gap: 8px;
-            margin-top: 8px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红利智投 · 资产管家</title>
+<style>
+:root {
+  --primary: #1e3a5f;
+  --primary-light: #2c5f8a;
+  --success: #16a34a;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --text: #1f2937;
+  --text-secondary: #6b7280;
+  --background: #f0f2f5;
+  --card-bg: #ffffff;
+  --border: #e5e7eb;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--background);
+  color: var(--text);
+  line-height: 1.5;
+}
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+/* Header */
+header {
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  border-radius: 16px;
+  padding: 20px 28px;
+  margin-bottom: 24px;
+  color: white;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+header h1 { font-size: 22px; font-weight: 700; }
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.last-save { font-size: 12px; opacity: 0.8; }
+.btn-fast-export {
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.4);
+  color: white;
+  padding: 6px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+.btn-fast-export:hover { background: rgba(255,255,255,0.3); }
+nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.tab-btn {
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: white;
+  padding: 8px 18px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.tab-btn:hover { background: rgba(255,255,255,0.25); }
+.tab-btn.active { background: white; color: var(--primary); font-weight: 600; }
+
+/* Main */
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fade 0.2s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
+
+/* Cards */
+.cards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.card-label { font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+.card-value { font-size: 28px; font-weight: 700; color: var(--text); }
+.card-sub { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+.card h3 { font-size: 17px; margin-bottom: 16px; color: var(--text); }
+
+.section {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  margin-bottom: 24px;
+}
+.section h2, .section h3 { font-size: 18px; margin-bottom: 16px; }
+.card + .card { margin-top: 16px; }
+
+/* Table */
+.table-responsive { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; }
+.table th {
+  text-align: left; font-size: 12px; color: var(--text-secondary);
+  padding: 10px 8px; border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+.table td { padding: 12px 8px; border-bottom: 1px solid #f3f4f6; font-size: 14px; }
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: #f9fafb; }
+.fund-name { font-weight: 600; }
+.fund-id { font-size: 12px; color: #9ca3af; }
+
+/* Input */
+.price-input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+}
+.price-input:focus { outline: 2px solid #93c5fd; border-color: transparent; }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-light); }
+.btn-buy { background: #fee2e2; color: var(--danger); border: 1px solid #fecaca; }
+.btn-buy:hover { background: #fecaca; }
+.btn-sell { background: #dcfce7; color: var(--success); border: 1px solid #bbf7d0; }
+.btn-sell:hover { background: #bbf7d0; }
+.btn-ghost { background: #f3f4f6; color: var(--text); border: 1px solid #e5e7eb; }
+.btn-ghost:hover { background: #e5e7eb; }
+.btn-outline { background: white; color: var(--primary); border: 1px solid var(--primary); }
+.btn-outline:hover { background: #f0f5fa; }
+.btn-danger { background: #fee2e2; color: var(--danger); border: 1px solid #fecaca; }
+.btn-danger:hover { background: #fecaca; }
+.btn-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.btn-group .btn { margin: 0; }
+
+/* Forms */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+}
+.form-group input:focus, .form-group select:focus { outline: 2px solid #93c5fd; border-color: transparent; }
+.form-inline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.trade-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+@media (max-width: 768px) {
+  .trade-grid { grid-template-columns: 1fr; }
+}
+.estimate { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
+.estimate strong { color: var(--text); font-size: 16px; }
+
+/* Tags */
+.tag { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+.tag-buy { background: #fee2e2; color: var(--danger); }
+.tag-sell { background: #dcfce7; color: var(--success); }
+.tag-dividend { background: #fef3c7; color: var(--warning); }
+
+/* Profit/Loss */
+.profit { color: var(--danger); }
+.loss { color: var(--success); }
+
+/* Danger */
+.danger { border-left: 4px solid var(--danger); }
+
+/* Responsive */
+@media (max-width: 600px) {
+  header { padding: 16px; }
+  .card-value { font-size: 22px; }
+}
+</style>
 </head>
 <body>
-
-    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">
-        <h1>📊 红利智投</h1>
-        <span class="version-badge">v1.2.0</span>
+<div class="app">
+  <header>
+    <div class="header-top">
+      <h1>💰 红利智投 · 资产管家</h1>
+      <div class="header-actions">
+        <span class="last-save" id="lastSave"></span>
+        <button class="btn-fast-export" onclick="exportJSON()">💾 备份</button>
+      </div>
     </div>
-    <div class="subtitle">十万资金 · 三档加仓 · 股息率驱动 · 可在线微调协作模式</div>
+    <nav>
+      <button class="tab-btn active" data-tab="account">📊 账户</button>
+      <button class="tab-btn" data-tab="trade">🔄 买卖</button>
+      <button class="tab-btn" data-tab="dividend">🧧 分红</button>
+      <button class="tab-btn" data-tab="history">📜 历史</button>
+      <button class="tab-btn" data-tab="settings">⚙️ 设置</button>
+    </nav>
+  </header>
 
-    <div class="notice-bar">
-        💡 <b>使用提示：</b>如果收到新版本代码，只需在 GitHub 仓库把 <code>index.html</code> 覆盖，刷新即可。
-        所有数据保存在浏览器本地，不会丢失。建议每次大操作前点击“导出备份”。
+  <main>
+    <!-- 账户 -->
+    <div id="tab-account" class="tab-content active">
+      <div class="cards-row">
+        <div class="card">
+          <div class="card-label">总资产（现金+持仓）</div>
+          <div class="card-value" id="totalAsset">¥0.00</div>
+          <div class="card-sub" id="totalProfit"></div>
+        </div>
+        <div class="card">
+          <div class="card-label">现金余额</div>
+          <div class="card-value" id="cashAmount">¥0.00</div>
+          <div class="card-sub">买卖后自动更新</div>
+        </div>
+        <div class="card">
+          <div class="card-label">持仓市值</div>
+          <div class="card-value" id="stockValue">¥0.00</div>
+          <div class="card-sub">浮动收益 <span id="floatProfit"></span></div>
+        </div>
+        <div class="card">
+          <div class="card-label">累计分红</div>
+          <div class="card-value" id="totalDividend">¥0.00</div>
+          <div class="card-sub">已登记到账</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>📊 我的持仓</h2>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>基金</th>
+                <th>现价</th>
+                <th>持仓份额</th>
+                <th>成本价</th>
+                <th>市值</th>
+                <th>浮动盈亏</th>
+                <th>股息率</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="fundTableBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
-    <div class="top-stats">
-        <div class="stat-card">
-            <div class="stat-label">总资产</div>
-            <div class="stat-value" id="stat-total">-</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">现金</div>
-            <div class="stat-value" id="stat-cash">-</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">持仓市值</div>
-            <div class="stat-value" id="stat-market">-</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-label">累计收益率</div>
-            <div class="stat-value" id="stat-return">-</div>
-        </div>
-    </div>
-
-    <div class="grid-2">
-        <div>
-            <div class="glass">
-                <h3>⚙️ 资金与设置</h3>
-                <div class="btn-row">
-                    <label>初始资金</label>
-                    <input type="number" id="initial-capital" value="100000" style="width:120px">
-                    <button class="secondary" onclick="resetAll()">重置数据</button>
-                </div>
-                <div class="btn-row">
-                    <label>手动调整现金 ±</label>
-                    <input type="number" id="cash-adjust" value="0" step="100" style="width:120px">
-                    <button onclick="adjustCash()">确认调整</button>
-                </div>
-                <div class="importance">可用于记录分红入账、额外资金等。</div>
-                <div class="backup-btns">
-                    <button class="secondary" onclick="exportData()">⬇️ 导出备份</button>
-                    <button class="secondary" onclick="document.getElementById('import-file').click()">⬆️ 导入备份</button>
-                    <input type="file" id="import-file" accept=".json" style="display:none;" onchange="importDataFile(event)">
-                </div>
+    <!-- 买卖 -->
+    <div id="tab-trade" class="tab-content">
+      <div class="trade-grid">
+        <div class="card">
+          <h3>🟢 买入基金</h3>
+          <form id="buyForm">
+            <div class="form-group">
+              <label>选择基金</label>
+              <select id="buyFund"></select>
             </div>
-
-            <div class="glass">
-                <h3>📐 策略规则</h3>
-                <table>
-                    <tr><th>股息率</th><th>目标仓位</th></tr>
-                    <tr><td>&lt; 3%</td><td>保留底仓 3 万，超出卖出</td></tr>
-                    <tr><td>3% ~ 4.3%</td><td>持有不动 / 补足底仓 3 万</td></tr>
-                    <tr><td>4.3% ~ 5%</td><td>最高 8 万（3万底仓+5万加仓）</td></tr>
-                    <tr><td>≥ 5%</td><td>全仓 10 万</td></tr>
-                </table>
-                <div class="importance">买入时现金不足则全部买入；卖出时持仓不足则全部卖出。</div>
+            <div class="form-group">
+              <label>成交价格（可修改）</label>
+              <input type="number" id="buyPrice" step="0.001" min="0" required>
             </div>
-        </div>
-
-        <div>
-            <div class="glass">
-                <h3>📂 基金与持仓</h3>
-                <div id="fund-list-container"></div>
+            <div class="form-group">
+              <label>买入金额（元）</label>
+              <input type="number" id="buyAmount" step="0.01" min="0" placeholder="例如：10000" required>
             </div>
+            <button type="submit" class="btn btn-buy">确认买入</button>
+          </form>
         </div>
-    </div>
-
-    <div class="grid-2">
-        <div class="glass">
-            <h3>💼 当前持仓</h3>
-            <div id="position-table-container"></div>
-        </div>
-        <div class="glass">
-            <h3>📜 操作记录</h3>
-            <div class="log-table" id="log-table-container"></div>
-        </div>
-    </div>
-
-    <div class="glass">
-        <h3>📅 分红记录管理</h3>
-        <div class="btn-row">
-            <button onclick="showAddDividendModal()">➕ 添加分红记录</button>
-            <button class="secondary" onclick="showImportModal()">📥 批量导入分红数据</button>
-            <button class="secondary" onclick="showManageDividendModal()">📋 管理已有分红记录</button>
-        </div>
-        <div class="importance">每条记录必须附官方公告来源链接，以便核验。</div>
-    </div>
-
-    <!-- 添加分红 Modal -->
-    <div class="modal-overlay hidden" id="add-div-modal">
-        <div class="modal">
-            <h3>添加分红记录</h3>
-            <label>基金代码</label>
-            <input type="text" id="div-code" list="fund-codes" placeholder="如 512890">
-            <label>分红日期</label>
-            <input type="date" id="div-date">
-            <label>每股分红金额（元）</label>
-            <input type="number" id="div-perunit" step="0.0001" min="0">
-            <label>官方公告来源链接</label>
-            <input type="url" id="div-source" placeholder="https://...">
-            <div class="actions">
-                <button onclick="saveDividend()">保存</button>
-                <button class="secondary" onclick="closeModal('add-div-modal')">取消</button>
+        <div class="card">
+          <h3>🔴 卖出基金</h3>
+          <form id="sellForm">
+            <div class="form-group">
+              <label>选择基金</label>
+              <select id="sellFund"></select>
             </div>
+            <div class="form-group">
+              <label>成交价格（可修改）</label>
+              <input type="number" id="sellPrice" step="0.001" min="0" required>
+            </div>
+            <div class="form-group">
+              <label>卖出份额</label>
+              <input type="number" id="sellShares" step="0.01" min="0" placeholder="输入份额" required>
+            </div>
+            <p class="estimate">预计到账：<strong id="sellAmount">¥0.00</strong></p>
+            <button type="submit" class="btn btn-sell">确认卖出</button>
+            <button type="button" class="btn btn-ghost" id="btnSellAll">全部卖出</button>
+          </form>
         </div>
+      </div>
     </div>
 
-    <!-- 导入 Modal -->
-    <div class="modal-overlay hidden" id="import-modal">
-        <div class="modal">
-            <h3>批量导入分红数据</h3>
-            <p style="font-size:13px;color:#6b7280;">格式：JSON 数组，示例：</p>
-            <pre style="background:#f3f4f6;padding:10px;border-radius:8px;font-size:12px;overflow-x:auto;">[
-  {
-    "code": "512890",
-    "date": "2025-06-30",
-    "perUnit": 0.052,
-    "source": "https://www.huatai-pb.com/..."
+    <!-- 分红 -->
+    <div id="tab-dividend" class="tab-content">
+      <div class="card">
+        <h3>🧧 登记一笔分红</h3>
+        <form id="dividendForm">
+          <div class="form-inline">
+            <div class="form-group">
+              <label>分红来源基金</label>
+              <select id="divFund"></select>
+            </div>
+            <div class="form-group">
+              <label>分红到账日期</label>
+              <input type="date" id="divDate" required>
+            </div>
+            <div class="form-group">
+              <label>分红金额（元）</label>
+              <input type="number" id="divAmount" step="0.01" min="0" placeholder="0.00" required>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">✅ 确认记录并入账</button>
+        </form>
+      </div>
+
+      <div class="section">
+        <h3>📒 分红历史</h3>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr><th>日期</th><th>基金</th><th>分红金额</th><th>操作</th></tr>
+            </thead>
+            <tbody id="dividendTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史 -->
+    <div id="tab-history" class="tab-content">
+      <div class="section">
+        <h2>📜 全部交易流水</h2>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr><th>时间</th><th>类型</th><th>基金</th><th>价格</th><th>份额</th><th>金额</th></tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设置 -->
+    <div id="tab-settings" class="tab-content">
+      <div class="card">
+        <h3>⚙️ 基金参数编辑</h3>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr><th>代码</th><th>名称</th><th>年分红（每份/元）</th><th>当前价格</th></tr>
+            </thead>
+            <tbody id="fundSettingsTable"></tbody>
+          </table>
+        </div>
+        <button class="btn btn-primary" onclick="saveFundSettings()">💾 保存基金参数</button>
+      </div>
+
+      <div class="card">
+        <h3>💾 数据备份与导入</h3>
+        <div class="btn-group">
+          <button class="btn btn-outline" onclick="exportJSON()">💾 导出全部数据(JSON)</button>
+          <button class="btn btn-outline" onclick="exportHoldingsCSV()">📊 导出持仓CSV</button>
+          <button class="btn btn-outline" onclick="exportHistoryCSV()">📜 导出流水CSV</button>
+          <button class="btn btn-outline" onclick="importJSON()">📥 导入JSON数据</button>
+          <input type="file" id="importFile" accept=".json" style="display:none">
+        </div>
+        <p style="font-size:12px;color:#6b7280;margin-top:12px;">导出JSON为完整备份，包含所有交易和分红记录。导入时会覆盖当前全部数据，请谨慎操作。</p>
+      </div>
+
+      <div class="card danger">
+        <h3>⚠️ 危险操作</h3>
+        <button class="btn btn-danger" onclick="resetData()">🔄 恢复初始状态</button>
+        <p style="font-size:12px;color:#6b7280;margin-top:12px;">此操作将清空所有持仓、交易、分红记录，恢复为初始的10万元现金状态。</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+// ============ 常量与默认数据 ============
+const STORAGE_KEY = 'hongliProState';
+const LEGACY_KEYS = ['hongliTool', 'hongli_data', 'dividendTool'];
+
+const DEFAULT_FUNDS = {
+  '510880': { id: '510880', name: '上证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.30 },
+  '515180': { id: '515180', name: '中证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.08 },
+  '512890': { id: '512890', name: '红利低波ETF', shares: 0, avgCost: 0, annualDividend: 0.05 },
+  '510300': { id: '510300', name: '沪深300ETF', shares: 0, avgCost: 0, annualDividend: 0.10 },
+  '159915': { id: '159915', name: '创业板ETF', shares: 0, avgCost: 0, annualDividend: 0.02 }
+};
+
+const DEFAULT_PRICES = {
+  '510880': 3.20,
+  '515180': 1.50,
+  '512890': 1.00,
+  '510300': 4.00,
+  '159915': 2.50
+};
+
+function createDefaultState() {
+  return {
+    version: 2,
+    initialCapital: 100000,
+    cash: 100000,
+    funds: JSON.parse(JSON.stringify(DEFAULT_FUNDS)),
+    prices: { ...DEFAULT_PRICES },
+    history: [],
+    dividends: []
+  };
+}
+
+// ============ 状态管理 ============
+let state = null;
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+  document.getElementById('lastSave').textContent = '已保存 ' + time;
+}
+
+function loadLegacy() {
+  for (const key of LEGACY_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const data = JSON.parse(raw);
+      if (data && typeof data === 'object' && (data.funds || data.positions || data.holdings || data.cash !== undefined)) {
+        const newState = createDefaultState();
+        if (typeof data.cash === 'number') newState.cash = data.cash;
+        if (typeof data.initialCapital === 'number') newState.initialCapital = data.initialCapital;
+        const fundsData = data.funds || data.positions || data.holdings || {};
+        for (const id in fundsData) {
+          const item = fundsData[id];
+          if (item && typeof item === 'object') {
+            if (newState.funds[id]) {
+              if (typeof item.shares === 'number') newState.funds[id].shares = item.shares;
+              if (typeof item.avgCost === 'number') newState.funds[id].avgCost = item.avgCost;
+              if (typeof item.cost === 'number') newState.funds[id].avgCost = item.cost;
+            }
+          }
+        }
+        if (data.prices) {
+          for (const id in data.prices) {
+            if (newState.prices[id] !== undefined && typeof data.prices[id] === 'number') {
+              newState.prices[id] = data.prices[id];
+            }
+          }
+        }
+        return newState;
+      }
+    } catch (e) { /* ignore */ }
   }
-]</pre>
-            <textarea id="import-data" rows="8" style="width:100%;font-size:12px;font-family:monospace;"></textarea>
-            <div class="actions">
-                <button onclick="importDividends()">导入</button>
-                <button class="secondary" onclick="closeModal('import-modal')">取消</button>
-            </div>
-        </div>
-    </div>
+  return null;
+}
 
-    <!-- 管理分红 Modal -->
-    <div class="modal-overlay hidden" id="manage-div-modal">
-        <div class="modal">
-            <h3>管理分红记录</h3>
-            <div id="manage-div-list" style="max-height:300px;overflow-y:auto;"></div>
-            <div class="actions">
-                <button class="secondary" onclick="closeModal('manage-div-modal')">关闭</button>
-            </div>
-        </div>
-    </div>
-
-    <datalist id="fund-codes"></datalist>
-
-    <script>
-        // ========== 版本号 ==========
-        window.HONGLI_VERSION = '1.2.0';
-
-        // ========== 基础基金配置 ==========
-        const FUND_CONFIGS = [
-            { code: '512890', name: '华泰柏瑞中证红利低波ETF', sector: '银行/电力', source: 'https://www.huatai-pb.com/fund/512890.html', price: 1.080 },
-            { code: '510880', name: '华泰柏瑞上证红利ETF', sector: '银行/煤炭', source: 'https://www.huatai-pb.com/fund/510880.html', price: 3.500 },
-            { code: '515080', name: '博时中证红利ETF', sector: '银行/地产', source: 'https://www.bosera.com/fund/515080.html', price: 1.200 },
-            { code: '159905', name: '工银深证红利ETF', sector: '消费/白酒', source: 'https://www.icbccs.com.cn/fund/159905.html', price: 2.300 },
-            { code: '515180', name: '易方达中证红利ETF', sector: '综合红利', source: 'https://www.efunds.com.cn/fund/515180.html', price: 1.100 }
-        ];
-
-        // ========== 状态管理 ==========
-        const STORAGE_KEY = 'hongli_zhitou_v1';
-        let state = {
-            initialCapital: 100000,
-            cash: 100000,
-            positions: {},
-            prices: {},
-            dividends: {},
-            logs: []
+function loadState() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object' && parsed.funds && typeof parsed.cash === 'number') {
+        state = {
+          version: 2,
+          initialCapital: typeof parsed.initialCapital === 'number' ? parsed.initialCapital : 100000,
+          cash: parsed.cash,
+          funds: { ...JSON.parse(JSON.stringify(DEFAULT_FUNDS)), ...parsed.funds },
+          prices: { ...DEFAULT_PRICES, ...(parsed.prices || {}) },
+          history: Array.isArray(parsed.history) ? parsed.history : [],
+          dividends: Array.isArray(parsed.dividends) ? parsed.dividends : []
         };
+        return;
+      }
+    } catch (e) { console.warn('解析本地数据失败', e); }
+  }
+  state = loadLegacy() || createDefaultState();
+  save();
+}
 
-        function loadState() {
-            try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                if (raw) state = JSON.parse(raw);
-            } catch (e) { console.warn('加载失败，使用初始状态', e); }
-            FUND_CONFIGS.forEach(f => {
-                if (!state.prices[f.code]) state.prices[f.code] = f.price;
-                if (!state.positions[f.code]) state.positions[f.code] = { shares: 0, cost: 0 };
-                if (!state.dividends[f.code]) state.dividends[f.code] = [];
-            });
-            if (!state.logs) state.logs = [];
-        }
+// ============ 工具函数 ============
+function fmtMoney(n) {
+  if (isNaN(n)) return '¥0.00';
+  return '¥' + Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtNumber(n, d = 2) {
+  if (isNaN(n)) return '0.00';
+  return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function saveFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
+function downloadCSV(filename, headers, rows) {
+  const BOM = '\uFEFF';
+  const esc = (v) => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const content = [headers, ...rows].map(r => r.map(esc).join(',')).join('\n');
+  saveFile(filename, BOM + content, 'text/csv');
+}
+function formatDateTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function getLocalDate() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
 
-        function saveState() {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        }
+// ============ 渲染：账户页 ============
+function renderAccount() {
+  let totalAsset = state.cash;
+  let totalStockValue = 0;
+  let totalFloatProfit = 0;
 
-        // ========== 工具函数 ==========
-        function getPrice(code) {
-            return state.prices[code] || 0;
-        }
+  let html = '';
+  for (const id in state.funds) {
+    const fund = state.funds[id];
+    const price = state.prices[id] || 0;
+    const shares = fund.shares || 0;
+    const marketValue = shares * price;
+    const rowProfit = fund.avgCost ? (price - fund.avgCost) * shares : 0;
+    const profitRate = fund.avgCost && shares ? ((price - fund.avgCost) / fund.avgCost * 100) : 0;
+    const yieldRate = price ? (fund.annualDividend / price * 100) : 0;
 
-        function getPositionValue(code) {
-            const pos = state.positions[code];
-            return (pos.shares * getPrice(code)) || 0;
-        }
+    totalStockValue += marketValue;
+    totalFloatProfit += rowProfit;
 
-        function getAnnualDiv(code) {
-            const list = state.dividends[code] || [];
-            if (list.length === 0) return 0;
-            const monthMap = {};
-            for (const d of list) {
-                const ym = d.date.substring(0, 7);
-                monthMap[ym] = (monthMap[ym] || 0) + (Number(d.perUnit) || 0);
-            }
-            const now = new Date();
-            const nowIndex = now.getFullYear() * 12 + now.getMonth();
-            let total = 0;
-            for (const ym in monthMap) {
-                const [y, m] = ym.split('-').map(Number);
-                const index = y * 12 + (m - 1);
-                if (nowIndex - index < 12) total += monthMap[ym];
-            }
-            return total;
-        }
+    const hasPosition = shares > 0;
+    html += `<tr>
+      <td>
+        <div class="fund-name">${fund.name}</div>
+        <div class="fund-id">${id}</div>
+      </td>
+      <td>
+        <input type="number" class="price-input" data-id="${id}" value="${price.toFixed(3)}" step="0.001" min="0">
+      </td>
+      <td>${fmtNumber(shares)}</td>
+      <td>${fund.avgCost ? fmtMoney(fund.avgCost) : '—'}</td>
+      <td>${fmtMoney(marketValue)}</td>
+      <td class="${rowProfit >= 0 ? 'profit' : 'loss'}">
+        ${hasPosition ? (rowProfit >= 0 ? '+' : '') + fmtMoney(rowProfit) + ' (' + (profitRate >= 0 ? '+' : '') + profitRate.toFixed(2) + '%)' : '—'}
+      </td>
+      <td>${yieldRate.toFixed(2)}%</td>
+      <td>
+        <button class="btn btn-ghost" onclick="goToSell('${id}')" ${hasPosition ? '' : 'disabled'} style="padding:6px 12px;font-size:12px;margin:0;">卖出</button>
+      </td>
+    </tr>`;
+  }
 
-        function getYield(code) {
-            const price = getPrice(code);
-            const div = getAnnualDiv(code);
-            if (!price || !div) return 0;
-            return div / price;
-        }
+  document.getElementById('fundTableBody').innerHTML = html;
+  totalAsset = state.cash + totalStockValue;
+  document.getElementById('totalAsset').textContent = fmtMoney(totalAsset);
+  document.getElementById('cashAmount').textContent = fmtMoney(state.cash);
+  document.getElementById('stockValue').textContent = fmtMoney(totalStockValue);
+  const floatProfitEl = document.getElementById('floatProfit');
+  floatProfitEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
+  floatProfitEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
 
-        // ========== 策略逻辑 ==========
-        function getSignal(code) {
-            const y = getYield(code);
-            if (y < 0.03) return { label: '减仓', target: 30000, cls: 'badge-red' };
-            if (y >= 0.03 && y < 0.043) return { label: '持有', target: null, cls: 'badge-yellow' };
-            if (y >= 0.043 && y < 0.05) return { label: '加仓', target: 80000, cls: 'badge-blue' };
-            return { label: '全仓', target: 100000, cls: 'badge-green' };
-        }
+  const totalDividend = state.dividends.reduce((s, d) => s + (d.amount || 0), 0);
+  document.getElementById('totalDividend').textContent = fmtMoney(totalDividend);
 
-        function getAdvice(code) {
-            const y = getYield(code);
-            const currentVal = getPositionValue(code);
-            let target = null;
-            if (currentVal === 0) {
-                if (y >= 0.05) target = 100000;
-                else if (y >= 0.043) target = 80000;
-                else if (y >= 0.03) target = 30000;
-                else target = 0;
-            } else {
-                if (y < 0.03) {
-                    target = 30000;
-                } else if (y < 0.043) {
-                    target = Math.max(currentVal, 30000);
-                } else if (y < 0.05) {
-                    target = Math.max(currentVal, 80000);
-                } else {
-                    target = 100000;
-                }
-            }
-            const diff = target - currentVal;
-            return { target, diff, yield: y };
-        }
+  const initProfit = totalAsset - state.initialCapital;
+  const initRate = state.initialCapital ? (initProfit / state.initialCapital * 100) : 0;
+  document.getElementById('totalProfit').textContent =
+    `较初始资金 ${initProfit >= 0 ? '+' : ''}${fmtMoney(initProfit)} (${initRate >= 0 ? '+' : ''}${initRate.toFixed(2)}%)`;
+}
 
-        // ========== 交易执行 ==========
-        function buyFund(code, amount) {
-            const price = getPrice(code);
-            if (!price || amount <= 0) return;
-            const shares = amount / price;
-            const pos = state.positions[code];
-            const cost = pos.cost * pos.shares + amount;
-            pos.shares += shares;
-            pos.cost = cost / pos.shares;
-            state.cash -= amount;
-            addLog(code, '买入', price, shares, amount, `金额 ${amount.toFixed(2)}`);
-            saveState();
-        }
+// ============ 渲染：分红 ============
+function renderDividend() {
+  const tbody = document.getElementById('dividendTableBody');
+  if (!state.dividends.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#9ca3af;padding:24px;">暂无分红记录，快去登记一笔吧 🧧</td></tr>';
+    return;
+  }
+  let html = '';
+  for (const d of state.dividends) {
+    const fund = state.funds[d.fundId] || {};
+    html += `<tr>
+      <td>${formatDate(d.time)}</td>
+      <td>${fund.name || d.fundId}</td>
+      <td style="color:#d97706;font-weight:600;">+${fmtMoney(d.amount)}</td>
+      <td><button class="btn btn-danger" onclick="deleteDividend(${d.id})" style="padding:5px 12px;font-size:12px;margin:0;">删除</button></td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  return dateStr;
+}
 
-        function sellFund(code, amount) {
-            const price = getPrice(code);
-            const val = getPositionValue(code);
-            if (!price || val <= 0) return;
-            const sellRatio = amount / val;
-            const sharesOut = state.positions[code].shares * sellRatio;
-            const cashIn = sharesOut * price;
-            state.positions[code].shares -= sharesOut;
-            state.positions[code].cost = state.positions[code].cost || 0;
-            state.cash += cashIn;
-            addLog(code, '卖出', price, sharesOut, cashIn, `金额 ${cashIn.toFixed(2)}`);
-            if (state.positions[code].shares < 0.0001) {
-                state.positions[code] = { shares: 0, cost: 0 };
-            }
-            saveState();
-        }
+// ============ 渲染：历史 ============
+function renderHistory() {
+  const tbody = document.getElementById('historyTableBody');
+  if (!state.history.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:24px;">暂无交易记录</td></tr>';
+    return;
+  }
+  const typeMap = {
+    buy: ['买入', 'tag-buy'],
+    sell: ['卖出', 'tag-sell'],
+    dividend: ['分红', 'tag-dividend']
+  };
+  let html = '';
+  for (const h of state.history) {
+    const fund = state.funds[h.fundId] || {};
+    const [typeText, typeClass] = typeMap[h.type] || [h.type, ''];
+    html += `<tr>
+      <td style="white-space:nowrap;">${h.type === 'dividend' ? formatDate(h.time) : formatDateTime(h.time)}</td>
+      <td><span class="tag ${typeClass}">${typeText}</span></td>
+      <td>${fund.name || h.fundId}</td>
+      <td>${h.price ? fmtMoney(h.price).replace('¥', '¥') : '—'}</td>
+      <td>${h.shares ? fmtNumber(h.shares) : '—'}</td>
+      <td style="${h.type === 'dividend' ? 'color:#d97706;' : ''}">${h.amount ? fmtMoney(h.amount) : '—'}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
 
-        function executeAdvice(code) {
-            const advice = getAdvice(code);
-            const currentVal = getPositionValue(code);
-            if (advice.diff > 0) {
-                const amt = Math.min(advice.diff, state.cash);
-                if (amt < 10) {
-                    alert('现金不足，无法执行买入');
-                    return;
-                }
-                buyFund(code, amt);
-            } else if (advice.diff < 0) {
-                const amt = Math.min(-advice.diff, currentVal);
-                if (amt < 10) {
-                    alert('持仓不足，无法执行卖出');
-                    return;
-                }
-                sellFund(code, amt);
-            } else {
-                alert('当前无需操作');
-            }
-            render();
-        }
+// ============ 渲染：设置 ============
+function renderSettings() {
+  const tbody = document.getElementById('fundSettingsTable');
+  let html = '';
+  for (const id in state.funds) {
+    const f = state.funds[id];
+    html += `<tr>
+      <td style="font-family:monospace;">${id}</td>
+      <td><input type="text" class="fund-name-input" data-id="${id}" value="${f.name}" style="width:100%;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;"></td>
+      <td><input type="number" class="fund-div-input" data-id="${id}" value="${f.annualDividend}" step="0.001" min="0" style="width:120px;padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;"></td>
+      <td>${fmtMoney(state.prices[id] || 0)}</td>
+    </tr>`;
+  }
+  tbody.innerHTML = html;
+}
 
-        // ========== 日志 ==========
-        function addLog(code, action, price, shares, amount, note) {
-            const now = new Date();
-            const timeStr = now.toLocaleString('zh-CN', { hour12: false });
-            state.logs.unshift({
-                time: timeStr,
-                code,
-                action,
-                price: price.toFixed(3),
-                shares: shares.toFixed(3),
-                amount: amount.toFixed(2),
-                cash: state.cash.toFixed(2),
-                note
-            });
-            if (state.logs.length > 100) state.logs.length = 100;
-        }
+// ============ 渲染总入口 ============
+function renderAll() {
+  renderAccount();
+  renderDividend();
+  renderHistory();
+  renderSettings();
+}
 
-        // ========== 渲染 ==========
-        function render() {
-            renderStats();
-            renderFundList();
-            renderPositions();
-            renderLogs();
-        }
+// ============ Tab 切换 ============
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  const content = document.getElementById('tab-' + tab);
+  if (content) content.classList.add('active');
+  const btn = document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (btn) btn.classList.add('active');
+  if (tab === 'account') renderAccount();
+  if (tab === 'dividend') renderDividend();
+  if (tab === 'history') renderHistory();
+  if (tab === 'settings') renderSettings();
+}
 
-        function renderStats() {
-            let marketVal = 0;
-            FUND_CONFIGS.forEach(f => { marketVal += getPositionValue(f.code); });
-            const total = state.cash + marketVal;
-            const ret = (total - state.initialCapital) / state.initialCapital * 100;
-            document.getElementById('stat-total').textContent = '¥' + total.toFixed(2);
-            document.getElementById('stat-cash').textContent = '¥' + state.cash.toFixed(2);
-            document.getElementById('stat-market').textContent = '¥' + marketVal.toFixed(2);
-            const el = document.getElementById('stat-return');
-            el.textContent = ret.toFixed(2) + '%';
-            el.style.color = ret >= 0 ? '#047857' : '#dc2626';
-        }
+// ============ 买入 / 卖出 ============
+function buy(fundId, price, amount) {
+  const fund = state.funds[fundId];
+  if (!fund) return alert('基金不存在');
+  if (amount > state.cash) return alert('现金不足！当前现金：' + fmtMoney(state.cash));
+  const shares = Math.round((amount / price) * 100) / 100;
+  if (shares <= 0) return alert('计算份额为0，请检查价格');
+  const realAmount = Math.round(shares * price * 100) / 100;
+  if (realAmount > state.cash) return alert('现金不足！');
 
-        function renderFundList() {
-            const container = document.getElementById('fund-list-container');
-            let html = '';
-            const dl = document.getElementById('fund-codes');
-            dl.innerHTML = FUND_CONFIGS.map(f => `<option value="${f.code}">${f.name}</option>`).join('');
-            FUND_CONFIGS.forEach(f => {
-                const price = getPrice(f.code);
-                const y = getYield(f.code);
-                const signal = getSignal(f.code);
-                const posVal = getPositionValue(f.code);
-                const divs = state.dividends[f.code] || [];
-                const divHtml = divs.length === 0 ?
-                    '<span style="color:#9ca3af;">暂无分红记录</span>' :
-                    divs.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3).map(d => {
-                        const src = d.source ?
-                            `<a href="${d.source}" target="_blank" class="source-link">[核验]</a>` :
-                            '<span class="source-missing">⚠️无来源</span>';
-                        return `<div class="div-row"><span>${d.date} 每份 ${Number(d.perUnit).toFixed(4)}</span><span>${src}</span></div>`;
-                    }).join('');
-                const sourceForFund = `<a href="${f.source}" target="_blank" class="source-link">${f.source.replace('https://','').replace('www.','')}</a>`;
-                html += `
-                    <div class="fund-card">
-                        <div class="fund-header">
-                            <div>
-                                <span class="fund-name">${f.name}</span>
-                                <span class="fund-code"> ${f.code}</span>
-                                <div style="font-size:12px;color:#6b7280;">${f.sector}</div>
-                            </div>
-                            <div>
-                                <span class="badge ${signal.cls}">${signal.label}</span>
-                            </div>
-                        </div>
-                        <div style="font-size:12px;margin-bottom:6px;">官方公告：${sourceForFund}</div>
-                        <div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;">
-                            <div>现价 <strong>¥${price.toFixed(3)}</strong></div>
-                            <div>股息率 <strong style="color:#2563eb;">${(y*100).toFixed(2)}%</strong></div>
-                            <div>持仓市值 <strong>¥${posVal.toFixed(2)}</strong></div>
-                        </div>
-                        <div class="btn-row">
-                            <input type="number" class="price-input" id="price-${f.code}" step="0.001" value="${price.toFixed(3)}" />
-                            <button class="secondary" onclick="updatePrice('${f.code}')">更新价</button>
-                            <button onclick="executeAdvice('${f.code}')">执行建议</button>
-                            <button class="secondary" onclick="showAddDividendModal('${f.code}')">+分红</button>
-                        </div>
-                        <div style="margin-top:8px;font-size:12px;color:#374151;">
-                            <strong>近12月分红记录：</strong>
-                            <div style="margin-top:4px;">${divHtml}</div>
-                        </div>
-                    </div>`;
-            });
-            container.innerHTML = html;
-        }
+  const totalCost = fund.avgCost * fund.shares + realAmount;
+  fund.shares += shares;
+  fund.avgCost = Math.round((totalCost / fund.shares) * 1000) / 1000;
+  state.cash -= realAmount;
 
-        function renderPositions() {
-            const container = document.getElementById('position-table-container');
-            let html = `<table>
-                <tr><th>代码</th><th>名称</th><th>持仓份额</th><th>成本价</th><th>现价</th><th>市值</th><th>盈亏</th></tr>`;
-            let hasData = false;
-            FUND_CONFIGS.forEach(f => {
-                const pos = state.positions[f.code];
-                if (!pos.shares || pos.shares < 0.0001) return;
-                hasData = true;
-                const price = getPrice(f.code);
-                const val = pos.shares * price;
-                const cost = pos.cost * pos.shares;
-                const profit = val - cost;
-                html += `<tr>
-                    <td>${f.code}</td>
-                    <td>${f.name}</td>
-                    <td>${pos.shares.toFixed(3)}</td>
-                    <td>¥${pos.cost.toFixed(3)}</td>
-                    <td>¥${price.toFixed(3)}</td>
-                    <td>¥${val.toFixed(2)}</td>
-                    <td style="color:${profit>=0?'#047857':'#dc2626'}">${profit>=0?'+':''}${profit.toFixed(2)}</td>
-                </tr>`;
-            });
-            if (!hasData) html += '<tr><td colspan="7" style="color:#9ca3af;text-align:center;">暂无持仓</td></tr>';
-            html += '</table>';
-            container.innerHTML = html;
-        }
+  state.history.unshift({
+    id: Date.now(),
+    time: new Date().toISOString(),
+    type: 'buy',
+    fundId,
+    price: Math.round(price * 1000) / 1000,
+    shares,
+    amount: realAmount
+  });
+  save();
+  renderAll();
+  alert(`✅ 买入成功！\n基金：${fund.name}\n份额：${fmtNumber(shares)}\n金额：${fmtMoney(realAmount)}\n剩余现金：${fmtMoney(state.cash)}`);
+}
 
-        function renderLogs() {
-            const container = document.getElementById('log-table-container');
-            if (state.logs.length === 0) {
-                container.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:20px;">暂无操作记录</div>';
-                return;
-            }
-            let html = `<table>
-                <tr><th>时间</th><th>代码</th><th>操作</th><th>价格</th><th>份额</th><th>金额</th><th>剩余现金</th></tr>`;
-            state.logs.forEach(log => {
-                html += `<tr>
-                    <td>${log.time}</td>
-                    <td>${log.code}</td>
-                    <td>${log.action}</td>
-                    <td>${log.price}</td>
-                    <td>${log.shares}</td>
-                    <td>${log.amount}</td>
-                    <td>${log.cash}</td>
-                </tr>`;
-            });
-            html += '</table>';
-            container.innerHTML = html;
-        }
+function sell(fundId, price, shares) {
+  const fund = state.funds[fundId];
+  if (!fund) return alert('基金不存在');
+  if (shares > fund.shares) return alert('份额不足！可卖份额：' + fmtNumber(fund.shares));
+  const amount = Math.round(shares * price * 100) / 100;
+  fund.shares = Math.round((fund.shares - shares) * 100) / 100;
+  if (fund.shares < 0.001) {
+    fund.shares = 0;
+    fund.avgCost = 0;
+  }
+  state.cash += amount;
 
-        // ========== 备份与恢复 ==========
-        function exportData() {
-            const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `hongli-data-${new Date().toISOString().slice(0, 10)}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
+  state.history.unshift({
+    id: Date.now(),
+    time: new Date().toISOString(),
+    type: 'sell',
+    fundId,
+    price: Math.round(price * 1000) / 1000,
+    shares,
+    amount
+  });
+  save();
+  renderAll();
+  alert(`✅ 卖出成功！\n基金：${fund.name}\n份额：${fmtNumber(shares)}\n到账现金：${fmtMoney(amount)}\n当前现金：${fmtMoney(state.cash)}`);
+}
 
-        function importDataFile(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = e => {
-                try {
-                    const parsed = JSON.parse(e.target.result);
-                    importState(parsed);
-                    alert('数据导入成功');
-                    render();
-                } catch (err) {
-                    alert('导入失败：文件格式错误');
-                }
-            };
-            reader.readAsText(file);
-            event.target.value = '';
-        }
+// ============ 分红 ============
+function addDividend(fundId, date, amount) {
+  const fund = state.funds[fundId];
+  if (!fund) return alert('基金不存在');
+  state.cash += amount;
+  state.dividends.unshift({
+    id: Date.now(),
+    time: date,
+    fundId,
+    amount
+  });
+  state.history.unshift({
+    id: Date.now(),
+    time: date,
+    type: 'dividend',
+    fundId,
+    price: 0,
+    shares: 0,
+    amount
+  });
+  save();
+  renderAll();
+  alert(`🧧 分红登记成功！\n基金：${fund.name}\n日期：${date}\n金额：${fmtMoney(amount)}\n已自动加入现金账户。`);
+}
 
-        function importState(parsed) {
-            if (!parsed || typeof parsed !== 'object') throw new Error('格式错误');
-            if (typeof parsed.initialCapital === 'number') state.initialCapital = parsed.initialCapital;
-            if (typeof parsed.cash === 'number') state.cash = parsed.cash;
-            if (parsed.positions && typeof parsed.positions === 'object') {
-                FUND_CONFIGS.forEach(f => {
-                    const p = parsed.positions[f.code];
-                    if (p && typeof p.shares === 'number') {
-                        state.positions[f.code] = { shares: p.shares, cost: p.cost || 0 };
-                    } else {
-                        state.positions[f.code] = { shares: 0, cost: 0 };
-                    }
-                });
-            }
-            if (parsed.prices && typeof parsed.prices === 'object') {
-                Object.assign(state.prices, parsed.prices);
-                FUND_CONFIGS.forEach(f => {
-                    if (!state.prices[f.code]) state.prices[f.code] = f.price;
-                });
-            }
-            if (parsed.dividends && typeof parsed.dividends === 'object') {
-                state.dividends = {};
-                Object.keys(parsed.dividends).forEach(c => {
-                    if (Array.isArray(parsed.dividends[c])) {
-                        state.dividends[c] = parsed.dividends[c].slice();
-                    }
-                });
-                FUND_CONFIGS.forEach(f => {
-                    if (!state.dividends[f.code]) state.dividends[f.code] = [];
-                });
-            }
-            if (Array.isArray(parsed.logs)) state.logs = parsed.logs.slice(0, 100);
-            saveState();
-        }
+function deleteDividend(id) {
+  const div = state.dividends.find(d => d.id === id);
+  if (!div) return;
+  if (!confirm('删除该分红记录，金额将从现金中扣除，确认继续？')) return;
+  state.cash -= div.amount;
+  state.dividends = state.dividends.filter(d => d.id !== id);
+  state.history = state.history.filter(h => !(h.type === 'dividend' && h.time === div.time && h.amount === div.amount && h.fundId === div.fundId));
+  save();
+  renderAll();
+  alert('已删除分红记录，现金已相应扣除。');
+}
 
-        // ========== 操作函数 ==========
-        function updatePrice(code) {
-            const val = parseFloat(document.getElementById('price-' + code).value);
-            if (isNaN(val) || val <= 0) {
-                alert('请输入有效价格');
-                return;
-            }
-            state.prices[code] = val;
-            saveState();
-            render();
-        }
+// ============ 价格更新 ============
+document.addEventListener('change', function(e) {
+  if (e.target.classList && e.target.classList.contains('price-input')) {
+    const id = e.target.dataset.id;
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val) && val > 0) {
+      state.prices[id] = Math.round(val * 1000) / 1000;
+      save();
+      renderAccount();
+    }
+  }
+});
 
-        function adjustCash() {
-            const delta = parseFloat(document.getElementById('cash-adjust').value);
-            if (isNaN(delta) || delta === 0) return;
-            state.cash += delta;
-            state.initialCapital += delta;
-            state.logs.unshift({
-                time: new Date().toLocaleString('zh-CN', { hour12: false }),
-                code: 'CASH',
-                action: '调整现金',
-                price: '-',
-                shares: '-',
-                amount: delta.toFixed(2),
-                cash: state.cash.toFixed(2),
-                note: '手动调整'
-            });
-            document.getElementById('cash-adjust').value = 0;
-            saveState();
-            render();
-        }
+// ============ 跳转到卖出 ============
+function goToSell(fundId) {
+  switchTab('trade');
+  document.getElementById('sellFund').value = fundId;
+  document.getElementById('sellFund').dispatchEvent(new Event('change'));
+  document.getElementById('sellShares').focus();
+}
 
-        function resetAll() {
-            if (!confirm('确认重置所有数据？此操作不可撤销。建议先导出备份。')) return;
-            localStorage.removeItem(STORAGE_KEY);
-            location.reload();
-        }
+// ============ 导出 / 导入 ============
+function exportJSON() {
+  const data = JSON.stringify({ ...state, exportedAt: new Date().toISOString() }, null, 2);
+  const date = new Date().toISOString().split('T')[0];
+  saveFile(`hongli-backup-${date}.json`, data, 'application/json');
+  alert('✅ 完整数据备份已导出！');
+}
 
-        // ========== 分红记录 ==========
-        function showAddDividendModal(code) {
-            document.getElementById('div-code').value = code || '';
-            document.getElementById('div-date').value = '';
-            document.getElementById('div-perunit').value = '';
-            document.getElementById('div-source').value = '';
-            document.getElementById('add-div-modal').classList.remove('hidden');
-        }
+function exportHoldingsCSV() {
+  const headers = ['基金代码', '基金名称', '持仓份额', '成本价', '现价', '市值', '浮动盈亏', '股息率'];
+  const rows = [];
+  for (const id in state.funds) {
+    const f = state.funds[id];
+    const price = state.prices[id] || 0;
+    const marketValue = f.shares * price;
+    const profit = f.avgCost ? (price - f.avgCost) * f.shares : 0;
+    const yieldRate = price ? (f.annualDividend / price * 100).toFixed(2) + '%' : '0.00%';
+    rows.push([id, f.name, f.shares.toFixed(2), f.avgCost.toFixed(3), price.toFixed(3), marketValue.toFixed(2), profit.toFixed(2), yieldRate]);
+  }
+  downloadCSV('hongli-holdings.csv', headers, rows);
+  alert('✅ 持仓CSV已导出，可用Excel打开！');
+}
 
-        function saveDividend() {
-            const code = document.getElementById('div-code').value.trim();
-            const date = document.getElementById('div-date').value;
-            const perUnit = parseFloat(document.getElementById('div-perunit').value);
-            const source = document.getElementById('div-source').value.trim();
-            if (!code || !date || isNaN(perUnit) || perUnit <= 0) {
-                alert('请填写完整且合法的分红信息');
-                return;
-            }
-            if (!source) {
-                alert('请填写官方公告来源链接，以便核验');
-                return;
-            }
-            if (!state.dividends[code]) state.dividends[code] = [];
-            state.dividends[code].push({ date, perUnit, source });
-            state.dividends[code].sort((a, b) => a.date.localeCompare(b.date));
-            saveState();
-            closeModal('add-div-modal');
-            render();
-        }
+function exportHistoryCSV() {
+  const headers = ['时间', '类型', '基金代码', '基金名称', '价格', '份额', '金额'];
+  const typeMap = { buy: '买入', sell: '卖出', dividend: '分红' };
+  const rows = state.history.map(h => {
+    const fund = state.funds[h.fundId] || {};
+    return [
+      h.type === 'dividend' ? h.time : formatDateTime(h.time),
+      typeMap[h.type] || h.type,
+      h.fundId,
+      fund.name || '',
+      h.price || '',
+      h.shares || '',
+      h.amount || ''
+    ];
+  });
+  downloadCSV('hongli-history.csv', headers, rows);
+  alert('✅ 交易流水CSV已导出！');
+}
 
-        function showImportModal() {
-            document.getElementById('import-data').value = '';
-            document.getElementById('import-modal').classList.remove('hidden');
-        }
+function importJSON() {
+  document.getElementById('importFile').click();
+}
+document.getElementById('importFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (typeof data.cash !== 'number' || !data.funds || typeof data.funds !== 'object') {
+        throw new Error('文件格式不正确');
+      }
+      if (!confirm('导入将覆盖当前所有数据，确认继续？')) return;
+      state = {
+        version: 2,
+        initialCapital: typeof data.initialCapital === 'number' ? data.initialCapital : 100000,
+        cash: data.cash,
+        funds: { ...JSON.parse(JSON.stringify(DEFAULT_FUNDS)), ...data.funds },
+        prices: { ...DEFAULT_PRICES, ...(data.prices || {}) },
+        history: Array.isArray(data.history) ? data.history : [],
+        dividends: Array.isArray(data.dividends) ? data.dividends : []
+      };
+      save();
+      renderAll();
+      alert('✅ 数据导入成功！');
+    } catch (err) {
+      alert('❌ 导入失败：' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
 
-        function importDividends() {
-            const raw = document.getElementById('import-data').value.trim();
-            if (!raw) return;
-            try {
-                const arr = JSON.parse(raw);
-                if (!Array.isArray(arr)) throw new Error('不是数组');
-                let count = 0;
-                arr.forEach(item => {
-                    if (!item.code || !item.date || !item.perUnit || !item.source) return;
-                    if (!state.dividends[item.code]) state.dividends[item.code] = [];
-                    state.dividends[item.code].push({
-                        date: item.date,
-                        perUnit: Number(item.perUnit),
-                        source: item.source
-                    });
-                    count++;
-                });
-                Object.keys(state.dividends).forEach(c => {
-                    state.dividends[c].sort((a, b) => a.date.localeCompare(b.date));
-                });
-                saveState();
-                closeModal('import-modal');
-                render();
-                alert(`成功导入 ${count} 条分红记录`);
-            } catch (e) {
-                alert('导入失败，请检查 JSON 格式');
-            }
-        }
+// ============ 设置保存 / 重置 ============
+function saveFundSettings() {
+  document.querySelectorAll('.fund-name-input').forEach(input => {
+    const id = input.dataset.id;
+    if (state.funds[id]) state.funds[id].name = input.value.trim() || state.funds[id].name;
+  });
+  document.querySelectorAll('.fund-div-input').forEach(input => {
+    const id = input.dataset.id;
+    if (state.funds[id]) state.funds[id].annualDividend = parseFloat(input.value) || 0;
+  });
+  save();
+  renderAll();
+  alert('✅ 基金参数已保存！');
+}
 
-        function showManageDividendModal() {
-            const container = document.getElementById('manage-div-list');
-            let html = '';
-            let total = 0;
-            FUND_CONFIGS.forEach(f => {
-                const list = state.dividends[f.code] || [];
-                if (list.length === 0) return;
-                total += list.length;
-                html += `<div style="font-weight:600;margin-top:8px;">${f.code} ${f.name} (${list.length}条)</div>`;
-                list.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach((d, i) => {
-                    const src = d.source ?
-                        `<a href="${d.source}" target="_blank" class="source-link">[核验]</a>` :
-                        '<span class="source-missing">⚠️无来源</span>';
-                    html += `<div class="div-row">
-                        <span>${d.date} 每份 ${Number(d.perUnit).toFixed(4)}</span>
-                        <span>${src}
-                            <button class="secondary" style="padding:2px 6px;font-size:12px;" onclick="deleteDividend('${f.code}', ${i})">删除</button>
-                        </span>
-                    </div>`;
-                });
-            });
-            if (total === 0) html = '<p style="color:#9ca3af;text-align:center;">暂无分红记录</p>';
-            container.innerHTML = html;
-            document.getElementById('manage-div-modal').classList.remove('hidden');
-        }
+function resetData() {
+  if (!confirm('⚠️ 确定恢复初始状态吗？\n所有持仓、交易、分红记录将被清空！')) return;
+  if (!confirm('⚠️ 再次确认：此操作不可撤销！')) return;
+  state = createDefaultState();
+  save();
+  renderAll();
+  alert('🔄 已恢复初始状态（10万元现金）');
+}
 
-        function deleteDividend(code, index) {
-            if (!confirm('删除该条分红记录？')) return;
-            const sorted = state.dividends[code].slice().sort((a, b) => b.date.localeCompare(a.date));
-            const target = sorted[index];
-            const origIndex = state.dividends[code].findIndex(d => d.date === target.date && d.perUnit === target.perUnit && d.source === target.source);
-            if (origIndex >= 0) state.dividends[code].splice(origIndex, 1);
-            if (state.dividends[code].length === 0) delete state.dividends[code];
-            saveState();
-            showManageDividendModal();
-            render();
-        }
+// ============ 初始化 ============
+function initTradeForms() {
+  const options = Object.values(state.funds).map(f =>
+    `<option value="${f.id}">${f.name}</option>`
+  ).join('');
 
-        // ========== 弹窗关闭 ==========
-        function closeModal(id) {
-            document.getElementById(id).classList.add('hidden');
-        }
+  document.getElementById('buyFund').innerHTML = options;
+  document.getElementById('sellFund').innerHTML = options;
+  document.getElementById('divFund').innerHTML = options;
 
-        // ========== 初始化 ==========
-        function init() {
-            loadState();
-            render();
-        }
+  // 买入/卖出默认价格
+  const syncPrice = (selectId, priceId) => {
+    document.getElementById(selectId).addEventListener('change', function() {
+      const id = this.value;
+      document.getElementById(priceId).value = state.prices[id] || 0;
+    });
+  };
+  syncPrice('buyFund', 'buyPrice');
+  syncPrice('sellFund', 'sellPrice');
 
-        document.addEventListener('DOMContentLoaded', init);
-    </script>
+  document.getElementById('buyPrice').value = state.prices[document.getElementById('buyFund').value] || 0;
+  document.getElementById('sellPrice').value = state.prices[document.getElementById('sellFund').value] || 0;
+
+  // 卖出份额联动计算
+  const calcSellAmount = () => {
+    const shares = parseFloat(document.getElementById('sellShares').value) || 0;
+    const price = parseFloat(document.getElementById('sellPrice').value) || 0;
+    document.getElementById('sellAmount').textContent = fmtMoney(shares * price);
+  };
+  document.getElementById('sellShares').addEventListener('input', calcSellAmount);
+  document.getElementById('sellPrice').addEventListener('input', calcSellAmount);
+
+  // 全部卖出
+  document.getElementById('btnSellAll').addEventListener('click', function() {
+    const fundId = document.getElementById('sellFund').value;
+    const fund = state.funds[fundId];
+    if (!fund || fund.shares <= 0) {
+      alert('该基金暂无持仓份额');
+      return;
+    }
+    document.getElementById('sellShares').value = fund.shares.toFixed(2);
+    calcSellAmount();
+  });
+
+  // 买入提交
+  document.getElementById('buyForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fundId = document.getElementById('buyFund').value;
+    const price = parseFloat(document.getElementById('buyPrice').value);
+    const amount = parseFloat(document.getElementById('buyAmount').value);
+    if (!price || price <= 0) return alert('请输入有效价格');
+    if (!amount || amount <= 0) return alert('请输入有效买入金额');
+    buy(fundId, price, amount);
+    document.getElementById('buyAmount').value = '';
+  });
+
+  // 卖出提交
+  document.getElementById('sellForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fundId = document.getElementById('sellFund').value;
+    const price = parseFloat(document.getElementById('sellPrice').value);
+    const shares = parseFloat(document.getElementById('sellShares').value);
+    if (!price || price <= 0) return alert('请输入有效价格');
+    if (!shares || shares <= 0) return alert('请输入有效卖出份额');
+    sell(fundId, price, shares);
+    document.getElementById('sellShares').value = '';
+    document.getElementById('sellAmount').textContent = '¥0.00';
+  });
+
+  // 分红提交
+  document.getElementById('dividendForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fundId = document.getElementById('divFund').value;
+    const date = document.getElementById('divDate').value;
+    const amount = parseFloat(document.getElementById('divAmount').value);
+    if (!date) return alert('请选择日期');
+    if (!amount || amount <= 0) return alert('请输入有效分红金额');
+    addDividend(fundId, date, amount);
+    document.getElementById('divAmount').value = '';
+  });
+}
+
+function init() {
+  loadState();
+
+  // 设置默认日期
+  document.getElementById('divDate').value = getLocalDate();
+
+  // Tab 绑定
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  initTradeForms();
+  renderAll();
+  save();
+}
+
+init();
+</script>
 </body>
 </html>
