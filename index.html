@@ -774,6 +774,10 @@ function fmtNumber(n, d) {
   if (isNaN(n)) return '0.00';
   return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
+function fmtPrice(n) {
+  if (isNaN(n)) return '¥0.000';
+  return '¥' + Number(n).toFixed(3);
+}
 function getStockValue() {
   let total = 0;
   for (const id in state.funds) {
@@ -958,7 +962,6 @@ function renderAccount() {
     const marketValue = shares * price;
     const floatProfit = (price - f.avgCost) * shares;
     const profitRate = f.avgCost && shares ? (floatProfit / (f.avgCost * shares) * 100) : 0;
-    // 累计分红率 = 累计分红 / 当前市值
     const yieldRate = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
     totalFloatProfit += floatProfit;
 
@@ -966,7 +969,7 @@ function renderAccount() {
     html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + id + '\')">' + fundLabel(id) + '</button></td>';
     html += '<td><input type="number" class="price-input" data-id="' + id + '" value="' + price.toFixed(3) + '" step="0.001" min="0"></td>';
     html += '<td>' + fmtNumber(shares) + '</td>';
-    html += '<td>' + (f.avgCost ? fmtMoney(f.avgCost) : '—') + '</td>';
+    html += '<td>' + (f.avgCost ? fmtPrice(f.avgCost) : '—') + '</td>';
     html += '<td>' + fmtMoney(marketValue) + '</td>';
     html += '<td class="' + (floatProfit >= 0 ? 'profit' : 'loss') + '">';
     html += (floatProfit >= 0 ? '+' : '') + fmtMoney(floatProfit) + ' (' + (profitRate >= 0 ? '+' : '') + profitRate.toFixed(2) + '%)';
@@ -1001,7 +1004,7 @@ function renderAccount() {
 
     closedHtml += '<tr>';
     closedHtml += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + id + '\')">' + fundLabel(id) + '</button> <span class="tag tag-closed">已清仓</span></td>';
-    closedHtml += '<td>' + fmtMoney(price) + '</td>';
+    closedHtml += '<td>' + fmtPrice(price) + '</td>';
     closedHtml += '<td>' + fmtMoney(stats.totalDividend) + '</td>';
     closedHtml += '<td class="' + (finalReturn >= 0 ? 'profit' : 'loss') + '">' + (finalReturn >= 0 ? '+' : '') + fmtMoney(finalReturn) + '</td>';
     closedHtml += '<td><button class="btn btn-ghost btn-sm" onclick="openFundDetail(\'' + id + '\')">详情</button></td>';
@@ -1052,7 +1055,7 @@ function renderHistory() {
       html += '<span class="fund-name">' + fundLabel(h.fundId) + '</span>';
     }
     html += '</td>';
-    html += '<td>' + (h.price ? fmtMoney(h.price) : '—') + '</td>';
+    html += '<td>' + (h.price ? fmtPrice(h.price) : '—') + '</td>';
     html += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
     html += '<td>' + (h.amount ? fmtMoney(h.amount) : '—') + '</td>';
     html += '<td class="note-cell">' + (h.note ? h.note : '—') + '</td>';
@@ -1071,7 +1074,7 @@ function renderSettings() {
     html += '<td><input type="text" class="settings-input fund-name-input" data-id="' + id + '" value="' + f.name + '"></td>';
     html += '<td><input type="number" class="settings-input fund-div-input" data-id="' + id + '" value="' + f.annualDividend + '" step="0.001" min="0" style="max-width:110px;"></td>';
     html += '<td><input type="url" class="settings-input fund-link-input" data-id="' + id + '" value="' + (f.link || '') + '" placeholder="https://..."></td>';
-    html += '<td>' + fmtMoney(state.prices[id] || 0) + '</td>';
+    html += '<td>' + fmtPrice(state.prices[id] || 0) + '</td>';
     html += '<td><button class="delete-fund-btn" onclick="deleteFund(\'' + id + '\')">删除</button></td>';
     html += '</tr>';
   }
@@ -1503,8 +1506,9 @@ function openFundDetail(id) {
   const stats = computeFundStats(id);
   const yieldRate = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
   const html = '<div class="modal-info-grid">' +
-    '<div class="modal-info-item"><div class="label">当前价</div><div class="value">' + fmtMoney(price) + '</div></div>' +
+    '<div class="modal-info-item"><div class="label">当前价</div><div class="value">' + fmtPrice(price) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">持有份额</div><div class="value">' + fmtNumber(fund.shares) + '</div></div>' +
+    '<div class="modal-info-item"><div class="label">成本价</div><div class="value">' + (fund.avgCost ? fmtPrice(fund.avgCost) : '—') + '</div></div>' +
     '<div class="modal-info-item"><div class="label">持仓市值</div><div class="value">' + fmtMoney(marketValue) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">浮动盈亏</div><div class="value ' + (profit >= 0 ? 'profit' : 'loss') + '">' + (profit >= 0 ? '+' : '') + fmtMoney(profit) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">已实现收益</div><div class="value ' + (stats.realizedPNL + stats.totalDividend >= 0 ? 'profit' : 'loss') + '">' + (stats.realizedPNL + stats.totalDividend >= 0 ? '+' : '') + fmtMoney(stats.realizedPNL + stats.totalDividend) + '</div></div>' +
@@ -1525,7 +1529,7 @@ function openFundDetail(id) {
       histHtml += '<tr>';
       histHtml += '<td style="white-space:nowrap;">' + formatHistoryTime(h.time) + '</td>';
       histHtml += '<td><span class="tag ' + tInfo[1] + '">' + tInfo[0] + '</span></td>';
-      histHtml += '<td>' + (h.price ? fmtMoney(h.price) : '—') + '</td>';
+      histHtml += '<td>' + (h.price ? fmtPrice(h.price) : '—') + '</td>';
       histHtml += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
       histHtml += '<td>' + (h.amount ? fmtMoney(h.amount) : '—') + '</td>';
       histHtml += '<td class="note-cell">' + (h.note ? h.note : '—') + '</td>';
