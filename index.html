@@ -444,7 +444,7 @@ tr:hover td { background: #F9F9FB; }
         <table>
           <thead>
             <tr>
-              <th>基金</th><th>现价</th><th>份额</th><th>成本价</th><th>市值</th><th>浮动盈亏</th><th>已实现收益</th><th>累计分红率</th><th>操作</th>
+              <th>基金</th><th>现价</th><th>份额</th><th>成本价</th><th>市值</th><th>浮动盈亏</th><th>已实现收益</th><th>累计分红率</th><th>静态股息率</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="fundTableBody"></tbody>
@@ -962,7 +962,8 @@ function renderAccount() {
     const marketValue = shares * price;
     const floatProfit = (price - f.avgCost) * shares;
     const profitRate = f.avgCost && shares ? (floatProfit / (f.avgCost * shares) * 100) : 0;
-    const yieldRate = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
+    const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
+    const staticYield = price > 0 ? (f.annualDividend / price * 100) : 0;
     totalFloatProfit += floatProfit;
 
     html += '<tr>';
@@ -975,12 +976,13 @@ function renderAccount() {
     html += (floatProfit >= 0 ? '+' : '') + fmtMoney(floatProfit) + ' (' + (profitRate >= 0 ? '+' : '') + profitRate.toFixed(2) + '%)';
     html += '</td>';
     html += '<td class="' + (stats.realizedPNL + stats.totalDividend >= 0 ? 'profit' : 'loss') + '">' + (stats.realizedPNL + stats.totalDividend >= 0 ? '+' : '') + fmtMoney(stats.realizedPNL + stats.totalDividend) + '</td>';
-    html += '<td>' + yieldRate.toFixed(2) + '%</td>';
+    html += '<td>' + cumYield.toFixed(2) + '%</td>';
+    html += '<td>' + staticYield.toFixed(2) + '%</td>';
     html += '<td><button class="btn btn-ghost btn-sm" onclick="goToSell(\'' + id + '\')">卖出</button></td>';
     html += '</tr>';
   }
 
-  document.getElementById('fundTableBody').innerHTML = html || '<tr><td colspan="9"><div class="empty">暂无持仓，去「买入」或上传交割单吧</div></td></tr>';
+  document.getElementById('fundTableBody').innerHTML = html || '<tr><td colspan="10"><div class="empty">暂无持仓，去「买入」或上传交割单吧</div></td></tr>';
 
   fpEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
   fpEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
@@ -1200,7 +1202,7 @@ function exportJSON() {
   alert('✅ 完整数据备份已导出！');
 }
 function exportHoldingsCSV() {
-  const headers = ['基金代码', '基金名称', '持仓份额', '成本价', '现价', '市值', '浮动盈亏', '已实现收益', '累计分红率'];
+  const headers = ['基金代码', '基金名称', '持仓份额', '成本价', '现价', '市值', '浮动盈亏', '已实现收益', '累计分红率', '静态股息率'];
   const rows = [];
   for (const id in state.funds) {
     const f = state.funds[id];
@@ -1210,8 +1212,9 @@ function exportHoldingsCSV() {
     const floatProfit = f.avgCost ? (price - f.avgCost) * f.shares : 0;
     const stats = computeFundStats(id);
     const realized = stats.realizedPNL + stats.totalDividend;
-    const yieldRate = marketValue > 0 ? (stats.totalDividend / marketValue * 100).toFixed(2) + '%' : '0.00%';
-    rows.push([id, f.name, f.shares.toFixed(2), f.avgCost.toFixed(3), price.toFixed(3), marketValue.toFixed(2), floatProfit.toFixed(2), realized.toFixed(2), yieldRate]);
+    const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100).toFixed(2) + '%' : '0.00%';
+    const staticYield = price > 0 ? (f.annualDividend / price * 100).toFixed(2) + '%' : '0.00%';
+    rows.push([id, f.name, f.shares.toFixed(2), f.avgCost.toFixed(3), price.toFixed(3), marketValue.toFixed(2), floatProfit.toFixed(2), realized.toFixed(2), cumYield, staticYield]);
   }
   downloadCSV('hongli-holdings.csv', headers, rows);
   alert('✅ 持仓CSV已导出！');
@@ -1504,7 +1507,8 @@ function openFundDetail(id) {
   const marketValue = (fund.shares || 0) * price;
   const profit = fund.avgCost ? (price - fund.avgCost) * (fund.shares || 0) : 0;
   const stats = computeFundStats(id);
-  const yieldRate = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
+  const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
+  const staticYield = price > 0 ? (fund.annualDividend / price * 100) : 0;
   const html = '<div class="modal-info-grid">' +
     '<div class="modal-info-item"><div class="label">当前价</div><div class="value">' + fmtPrice(price) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">持有份额</div><div class="value">' + fmtNumber(fund.shares) + '</div></div>' +
@@ -1512,7 +1516,8 @@ function openFundDetail(id) {
     '<div class="modal-info-item"><div class="label">持仓市值</div><div class="value">' + fmtMoney(marketValue) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">浮动盈亏</div><div class="value ' + (profit >= 0 ? 'profit' : 'loss') + '">' + (profit >= 0 ? '+' : '') + fmtMoney(profit) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">已实现收益</div><div class="value ' + (stats.realizedPNL + stats.totalDividend >= 0 ? 'profit' : 'loss') + '">' + (stats.realizedPNL + stats.totalDividend >= 0 ? '+' : '') + fmtMoney(stats.realizedPNL + stats.totalDividend) + '</div></div>' +
-    '<div class="modal-info-item"><div class="label">累计分红率</div><div class="value">' + yieldRate.toFixed(2) + '%</div></div>' +
+    '<div class="modal-info-item"><div class="label">累计分红率</div><div class="value">' + cumYield.toFixed(2) + '%</div></div>' +
+    '<div class="modal-info-item"><div class="label">静态股息率</div><div class="value">' + staticYield.toFixed(2) + '%</div></div>' +
     '</div>';
   document.getElementById('modalFundInfo').innerHTML = html;
   const linkHtml = fund.link ? '<a class="modal-link" href="' + fund.link + '" target="_blank">🔗 查看外部基金主页</a>' : '';
