@@ -231,6 +231,13 @@ th {
   border-bottom: 1px solid var(--border);
   background: var(--table-th);
 }
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s, color 0.2s;
+}
+th.sortable:hover { background: var(--hover); color: var(--text); }
+.sort-arrow { display: inline-block; width: 14px; margin-left: 2px; }
 td {
   padding: 14px 12px;
   border-bottom: 1px solid var(--table-border);
@@ -526,12 +533,21 @@ tr:hover td { background: var(--hover); }
     </div>
 
     <div class="card">
-      <div class="card-title">📋 当前持仓</div>
+      <div class="card-title">📋 当前持仓 <span style="font-size:13px;color:var(--text2);font-weight:400;">（点击列头排序）</span></div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>基金</th><th>现价</th><th>份额</th><th>成本价</th><th>市值</th><th>浮动盈亏</th><th>已实现收益</th><th>累计分红率</th><th>成本股息率</th><th>操作</th>
+              <th class="sortable" data-sort-key="name"><span>基金</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="price"><span>现价</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="shares"><span>份额</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="cost"><span>成本价</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="marketValue" style="color:var(--primary);"><span>市值</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="floatProfit"><span>浮动盈亏</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="realized"><span>已实现收益</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="cumYield"><span>累计分红率</span><i class="sort-arrow"></i></th>
+              <th class="sortable" data-sort-key="costYield"><span>成本股息率</span><i class="sort-arrow"></i></th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody id="fundTableBody"></tbody>
@@ -840,6 +856,10 @@ const DEFAULT_PRICES = {
   '510880': 3.20, '515180': 1.50, '512890': 1.00, '510300': 4.00, '159915': 2.50
 };
 
+// 排序状态
+let sortKey = 'marketValue';
+let sortDir = 'desc';
+
 function createDefaultState() {
   return {
     version: 4,
@@ -1119,6 +1139,17 @@ function cancelEdit(field) {
 }
 
 function renderAccount() {
+  // 先读取所有现价输入框的值并保存
+  const priceInputs = document.querySelectorAll('.price-input');
+  for (let i = 0; i < priceInputs.length; i++) {
+    const input = priceInputs[i];
+    const id = input.dataset.id;
+    const val = parseFloat(input.value);
+    if (!isNaN(val) && val > 0) {
+      state.prices[id] = round3(val);
+    }
+  }
+
   const totalAsset = getTotalAsset();
   const stockVal = getStockValue();
   let totalFloatProfit = 0;
@@ -1142,7 +1173,8 @@ function renderAccount() {
   const buyHint = document.getElementById('buyCashHint');
   if (buyHint) buyHint.textContent = fmtMoney(state.cash);
 
-  let html = '';
+  // 构建持仓行数据
+  let rows = [];
   const closedFunds = [];
 
   for (const id in state.funds) {
@@ -1162,21 +1194,63 @@ function renderAccount() {
     const profitRate = f.avgCost && shares ? (floatProfit / (f.avgCost * shares) * 100) : 0;
     const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
     const costYield = f.avgCost > 0 ? ((f.annualDividend / 10) / f.avgCost * 100) : 0;
+    const realized = stats.realizedPNL + stats.totalDividend;
     totalFloatProfit += floatProfit;
 
+    rows.push({
+      id: id,
+      name: f.name,
+      price: price,
+      shares: shares,
+      avgCost: f.avgCost,
+      marketValue: marketValue,
+      floatProfit: floatProfit,
+      profitRate: profitRate,
+      realized: realized,
+      cumYield: cumYield,
+      costYield: costYield
+    });
+  }
+
+  // 排序
+  if (sortKey) {
+    rows.sort(function(a, b) {
+      let valA, valB;
+      switch (sortKey) {
+        case 'name': valA = a.name; valB = b.name; break;
+        case 'price': valA = a.price; valB = b.price; break;
+        case 'shares': valA = a.shares; valB = b.shares; break;
+        case 'cost': valA = a.avgCost; valB = b.avgCost; break;
+        case 'marketValue': valA = a.marketValue; valB = b.marketValue; break;
+        case 'floatProfit': valA = a.floatProfit; valB = b.floatProfit; break;
+        case 'realized': valA = a.realized; valB = b.realized; break;
+        case 'cumYield': valA = a.cumYield; valB = b.cumYield; break;
+        case 'costYield': valA = a.costYield; valB = b.costYield; break;
+        default: return 0;
+      }
+      if (valA < valB) return sortDir === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
+  // 生成表格行
+  let html = '';
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     html += '<tr>';
-    html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + esc(id) + '\')">' + esc(fundLabel(id)) + '</button></td>';
-    html += '<td><input type="number" class="price-input" data-id="' + esc(id) + '" value="' + price.toFixed(3) + '" step="0.001" min="0"></td>';
-    html += '<td>' + fmtNumber(shares) + '</td>';
-    html += '<td>' + (f.avgCost ? fmtPrice(f.avgCost) : '—') + '</td>';
-    html += '<td>' + fmtMoney(marketValue) + '</td>';
-    html += '<td class="' + (floatProfit >= 0 ? 'profit' : 'loss') + '">';
-    html += (floatProfit >= 0 ? '+' : '') + fmtMoney(floatProfit) + ' (' + (profitRate >= 0 ? '+' : '') + profitRate.toFixed(2) + '%)';
+    html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + esc(row.id) + '\')">' + esc(fundLabel(row.id)) + '</button></td>';
+    html += '<td><input type="number" class="price-input" data-id="' + esc(row.id) + '" value="' + row.price.toFixed(3) + '" step="0.001" min="0"></td>';
+    html += '<td>' + fmtNumber(row.shares) + '</td>';
+    html += '<td>' + (row.avgCost ? fmtPrice(row.avgCost) : '—') + '</td>';
+    html += '<td>' + fmtMoney(row.marketValue) + '</td>';
+    html += '<td class="' + (row.floatProfit >= 0 ? 'profit' : 'loss') + '">';
+    html += (row.floatProfit >= 0 ? '+' : '') + fmtMoney(row.floatProfit) + ' (' + (row.profitRate >= 0 ? '+' : '') + row.profitRate.toFixed(2) + '%)';
     html += '</td>';
-    html += '<td class="' + (stats.realizedPNL + stats.totalDividend >= 0 ? 'profit' : 'loss') + '">' + (stats.realizedPNL + stats.totalDividend >= 0 ? '+' : '') + fmtMoney(stats.realizedPNL + stats.totalDividend) + '</td>';
-    html += '<td>' + cumYield.toFixed(2) + '%</td>';
-    html += '<td>' + (f.avgCost > 0 ? costYield.toFixed(2) + '%' : '—') + '</td>';
-    html += '<td><button class="btn btn-ghost btn-sm" onclick="goToSell(\'' + esc(id) + '\')">卖出</button></td>';
+    html += '<td class="' + (row.realized >= 0 ? 'profit' : 'loss') + '">' + (row.realized >= 0 ? '+' : '') + fmtMoney(row.realized) + '</td>';
+    html += '<td>' + row.cumYield.toFixed(2) + '%</td>';
+    html += '<td>' + (row.avgCost > 0 ? row.costYield.toFixed(2) + '%' : '—') + '</td>';
+    html += '<td><button class="btn btn-ghost btn-sm" onclick="goToSell(\'' + esc(row.id) + '\')">卖出</button></td>';
     html += '</tr>';
   }
 
@@ -1185,6 +1259,10 @@ function renderAccount() {
   fpEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
   fpEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
 
+  // 更新排序箭头
+  updateSortIndicators();
+
+  // 已清仓部分（保持不变）
   const closedCard = document.getElementById('closedPositionsCard');
   const closedBody = document.getElementById('closedTableBody');
 
@@ -1212,6 +1290,33 @@ function renderAccount() {
   }
   closedBody.innerHTML = closedHtml;
   closedCard.style.display = 'block';
+}
+
+// 更新表头排序箭头
+function updateSortIndicators() {
+  const ths = document.querySelectorAll('#fundTable th.sortable');
+  for (let i = 0; i < ths.length; i++) {
+    const th = ths[i];
+    const key = th.dataset.sortKey;
+    const arrowEl = th.querySelector('.sort-arrow');
+    if (!arrowEl) continue;
+    if (key === sortKey) {
+      arrowEl.textContent = sortDir === 'asc' ? ' ▲' : ' ▼';
+    } else {
+      arrowEl.textContent = '';
+    }
+  }
+}
+
+// 点击表头排序
+function sortTable(key) {
+  if (sortKey === key) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortKey = key;
+    sortDir = (key === 'name') ? 'asc' : 'desc';
+  }
+  renderAccount();
 }
 
 function renderDividend() {
@@ -2163,13 +2268,20 @@ function init() {
   document.getElementById('divDate').value = getLocalDate();
   document.getElementById('noteDate').value = getLocalDate();
 
-  // 初始化主题图标
   const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
   updateThemeIcon(currentTheme);
 
   const segments = document.querySelectorAll('.segment');
   for (let i = 0; i < segments.length; i++) {
     segments[i].addEventListener('click', function() { switchTab(this.dataset.tab); });
+  }
+
+  // 绑定表头点击事件
+  const sortableThs = document.querySelectorAll('#fundTable th.sortable');
+  for (let i = 0; i < sortableThs.length; i++) {
+    sortableThs[i].addEventListener('click', function() {
+      sortTable(this.dataset.sortKey);
+    });
   }
 
   initTradeForms();
