@@ -453,7 +453,7 @@ tr:hover td { background: #F9F9FB; }
         <table>
           <thead>
             <tr>
-              <th>基金</th><th>现价</th><th>份额</th><th>成本价</th><th>市值</th><th>浮动盈亏</th><th>已实现收益</th><th>累计分红率</th><th>静态股息率</th><th>操作</th>
+              <th>基金</th><th>现价</th><th>份额</th><th>成本价</th><th>市值</th><th>浮动盈亏</th><th>已实现收益</th><th>累计分红率</th><th>成本股息率</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="fundTableBody"></tbody>
@@ -594,7 +594,7 @@ tr:hover td { background: #F9F9FB; }
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>代码</th><th>名称</th><th>年分红/份</th><th>链接</th><th>当前价</th><th>操作</th></tr>
+            <tr><th>代码</th><th>名称</th><th>年分红（元/10份）</th><th>链接</th><th>当前价</th><th>操作</th></tr>
           </thead>
           <tbody id="fundSettingsTable"></tbody>
         </table>
@@ -615,8 +615,8 @@ tr:hover td { background: #F9F9FB; }
             <input type="text" id="newFundName" placeholder="如 上证红利ETF">
           </div>
           <div>
-            <label>年分红/份（选填）</label>
-            <input type="number" id="newFundDiv" step="0.001" min="0" placeholder="0.00">
+            <label>年分红（元/10份，选填）</label>
+            <input type="number" id="newFundDiv" step="0.001" min="0" placeholder="如 3.00">
           </div>
           <div>
             <label>当前价（选填）</label>
@@ -683,12 +683,13 @@ tr:hover td { background: #F9F9FB; }
 const STORAGE_KEY = 'hongliProState';
 const LEGACY_KEYS = ['hongliTool', 'hongli_data', 'dividendTool', 'hongliPro'];
 
+// 默认基金的年分红已调整为“元/10份”
 const DEFAULT_FUNDS = {
-  '510880': { id: '510880', name: '上证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.30, link: 'https://fund.eastmoney.com/510880.html' },
-  '515180': { id: '515180', name: '中证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.08, link: 'https://fund.eastmoney.com/515180.html' },
-  '512890': { id: '512890', name: '红利低波ETF', shares: 0, avgCost: 0, annualDividend: 0.05, link: 'https://fund.eastmoney.com/512890.html' },
-  '510300': { id: '510300', name: '沪深300ETF', shares: 0, avgCost: 0, annualDividend: 0.10, link: 'https://fund.eastmoney.com/510300.html' },
-  '159915': { id: '159915', name: '创业板ETF', shares: 0, avgCost: 0, annualDividend: 0.02, link: 'https://fund.eastmoney.com/159915.html' }
+  '510880': { id: '510880', name: '上证红利ETF', shares: 0, avgCost: 0, annualDividend: 3.00, link: 'https://fund.eastmoney.com/510880.html' },
+  '515180': { id: '515180', name: '中证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.80, link: 'https://fund.eastmoney.com/515180.html' },
+  '512890': { id: '512890', name: '红利低波ETF', shares: 0, avgCost: 0, annualDividend: 0.50, link: 'https://fund.eastmoney.com/512890.html' },
+  '510300': { id: '510300', name: '沪深300ETF', shares: 0, avgCost: 0, annualDividend: 1.00, link: 'https://fund.eastmoney.com/510300.html' },
+  '159915': { id: '159915', name: '创业板ETF', shares: 0, avgCost: 0, annualDividend: 0.20, link: 'https://fund.eastmoney.com/159915.html' }
 };
 const DEFAULT_PRICES = {
   '510880': 3.20, '515180': 1.50, '512890': 1.00, '510300': 4.00, '159915': 2.50
@@ -696,7 +697,7 @@ const DEFAULT_PRICES = {
 
 function createDefaultState() {
   return {
-    version: 3,
+    version: 4,
     initialCapital: 0,
     cash: 0,
     funds: JSON.parse(JSON.stringify(DEFAULT_FUNDS)),
@@ -710,6 +711,18 @@ let state = null;
 
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function migrateFundsFromOldVersion(data) {
+  if (data.funds && typeof data.funds === 'object') {
+    for (const id in data.funds) {
+      const fund = data.funds[id];
+      if (fund && typeof fund.annualDividend === 'number' && fund.annualDividend > 0) {
+        fund.annualDividend = fund.annualDividend * 10;
+      }
+    }
+  }
+  return data;
 }
 
 function mergeFunds(savedFunds) {
@@ -731,8 +744,11 @@ function loadState() {
     try {
       const p = JSON.parse(saved);
       if (p && p.funds && typeof p.cash === 'number') {
+        if (!p.version || p.version < 4) {
+          migrateFundsFromOldVersion(p);
+        }
         state = {
-          version: 3,
+          version: 4,
           initialCapital: typeof p.initialCapital === 'number' ? p.initialCapital : 0,
           cash: p.cash,
           funds: mergeFunds(p.funds),
@@ -740,6 +756,7 @@ function loadState() {
           history: Array.isArray(p.history) ? p.history : [],
           dividends: Array.isArray(p.dividends) ? p.dividends : []
         };
+        save();
         return;
       }
     } catch (e) { console.warn('解析失败', e); }
@@ -760,6 +777,7 @@ function loadState() {
             if (typeof item.shares === 'number') s.funds[id].shares = item.shares;
             if (typeof item.avgCost === 'number') s.funds[id].avgCost = item.avgCost;
             if (typeof item.cost === 'number') s.funds[id].avgCost = item.cost;
+            if (typeof item.annualDividend === 'number') s.funds[id].annualDividend = item.annualDividend * 10;
           }
         }
         if (data.prices) {
@@ -999,7 +1017,8 @@ function renderAccount() {
     const floatProfit = (price - f.avgCost) * shares;
     const profitRate = f.avgCost && shares ? (floatProfit / (f.avgCost * shares) * 100) : 0;
     const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
-    const staticYield = price > 0 ? (f.annualDividend / price * 100) : 0;
+    // 成本股息率：年分红（元/10份）÷10 ÷ 成本价 × 100%
+    const costYield = f.avgCost > 0 ? ((f.annualDividend / 10) / f.avgCost * 100) : 0;
     totalFloatProfit += floatProfit;
 
     html += '<tr>';
@@ -1013,7 +1032,7 @@ function renderAccount() {
     html += '</td>';
     html += '<td class="' + (stats.realizedPNL + stats.totalDividend >= 0 ? 'profit' : 'loss') + '">' + (stats.realizedPNL + stats.totalDividend >= 0 ? '+' : '') + fmtMoney(stats.realizedPNL + stats.totalDividend) + '</td>';
     html += '<td>' + cumYield.toFixed(2) + '%</td>';
-    html += '<td>' + staticYield.toFixed(2) + '%</td>';
+    html += '<td>' + (f.avgCost > 0 ? costYield.toFixed(2) + '%' : '—') + '</td>';
     html += '<td><button class="btn btn-ghost btn-sm" onclick="goToSell(\'' + esc(id) + '\')">卖出</button></td>';
     html += '</tr>';
   }
@@ -1289,7 +1308,7 @@ function exportJSON() {
 }
 
 function exportHoldingsCSV() {
-  const headers = ['基金代码', '基金名称', '持仓份额', '成本价', '现价', '市值', '浮动盈亏', '已实现收益', '累计分红率', '静态股息率'];
+  const headers = ['基金代码', '基金名称', '持仓份额', '成本价', '现价', '市值', '浮动盈亏', '已实现收益', '累计分红率', '成本股息率'];
   const rows = [];
   for (const id in state.funds) {
     const f = state.funds[id];
@@ -1300,8 +1319,8 @@ function exportHoldingsCSV() {
     const stats = computeFundStats(id);
     const realized = stats.realizedPNL + stats.totalDividend;
     const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100).toFixed(2) + '%' : '0.00%';
-    const staticYield = price > 0 ? (f.annualDividend / price * 100).toFixed(2) + '%' : '0.00%';
-    rows.push([id, f.name, f.shares.toFixed(2), f.avgCost.toFixed(3), price.toFixed(3), marketValue.toFixed(2), floatProfit.toFixed(2), realized.toFixed(2), cumYield, staticYield]);
+    const costYield = f.avgCost > 0 ? ((f.annualDividend / 10) / f.avgCost * 100).toFixed(2) + '%' : '0.00%';
+    rows.push([id, f.name, f.shares.toFixed(2), f.avgCost.toFixed(3), price.toFixed(3), marketValue.toFixed(2), floatProfit.toFixed(2), realized.toFixed(2), cumYield, costYield]);
   }
   downloadCSV('hongli-holdings.csv', headers, rows);
   alert('✅ 持仓CSV已导出！');
@@ -1336,14 +1355,18 @@ document.getElementById('importFile').addEventListener('change', function(e) {
   const reader = new FileReader();
   reader.onload = function(ev) {
     try {
-      const data = JSON.parse(ev.target.result);
+      let data = JSON.parse(ev.target.result);
       if (typeof data.cash !== 'number' || !data.funds || typeof data.funds !== 'object') {
         throw new Error('文件格式不正确');
       }
       if (!confirm('导入将覆盖当前所有数据，确认继续？')) return;
 
+      if (!data.version || data.version < 4) {
+        migrateFundsFromOldVersion(data);
+      }
+
       state = {
-        version: 3,
+        version: 4,
         initialCapital: typeof data.initialCapital === 'number' ? data.initialCapital : 0,
         cash: data.cash,
         funds: mergeFunds(data.funds),
@@ -1483,7 +1506,6 @@ function parseStatementFile(file) {
           state.funds[code] = { id: code, name: name, shares: 0, avgCost: 0, annualDividend: 0, link: '' };
         }
 
-        // 税补缴 / 组合费
         if (tradeType === 'tax' || tradeType === 'fee') {
           const deductAmount = Math.abs(amount) || 0;
           state.cash = round2(state.cash - deductAmount);
@@ -1515,7 +1537,6 @@ function parseStatementFile(file) {
             errors.push('第' + (i+1) + '行：买入份额为0');
             continue;
           }
-          // 通过成交金额反推价格，若金额缺失则用 price
           const effectivePrice = amount !== 0 && buyShares > 0 ? Math.abs(amount) / buyShares : price;
           const buyAmount = round2(buyShares * effectivePrice);
           const totalCost = buyAmount + fee;
@@ -1731,7 +1752,8 @@ function openFundDetail(id) {
   const profit = fund.avgCost ? (price - fund.avgCost) * (fund.shares || 0) : 0;
   const stats = computeFundStats(id);
   const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
-  const staticYield = price > 0 ? (fund.annualDividend / price * 100) : 0;
+  const currentYield = price > 0 ? ((fund.annualDividend / 10) / price * 100) : 0;
+  const costYield = fund.avgCost > 0 ? ((fund.annualDividend / 10) / fund.avgCost * 100) : 0;
 
   const html = '<div class="modal-info-grid">' +
     '<div class="modal-info-item"><div class="label">当前价</div><div class="value">' + fmtPrice(price) + '</div></div>' +
@@ -1741,7 +1763,8 @@ function openFundDetail(id) {
     '<div class="modal-info-item"><div class="label">浮动盈亏</div><div class="value ' + (profit >= 0 ? 'profit' : 'loss') + '">' + (profit >= 0 ? '+' : '') + fmtMoney(profit) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">已实现收益</div><div class="value ' + (stats.realizedPNL + stats.totalDividend >= 0 ? 'profit' : 'loss') + '">' + (stats.realizedPNL + stats.totalDividend >= 0 ? '+' : '') + fmtMoney(stats.realizedPNL + stats.totalDividend) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">累计分红率</div><div class="value">' + cumYield.toFixed(2) + '%</div></div>' +
-    '<div class="modal-info-item"><div class="label">静态股息率</div><div class="value">' + staticYield.toFixed(2) + '%</div></div>' +
+    '<div class="modal-info-item"><div class="label">当前股息率</div><div class="value">' + currentYield.toFixed(2) + '%</div></div>' +
+    '<div class="modal-info-item"><div class="label">成本股息率</div><div class="value">' + (costYield > 0 ? costYield.toFixed(2) + '%' : '—') + '</div></div>' +
     '</div>';
   document.getElementById('modalFundInfo').innerHTML = html;
 
