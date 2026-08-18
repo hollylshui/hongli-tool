@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>红利智投 · 资产管家</title>
 <script>
-// 在页面渲染前加载主题，避免闪烁
 (function() {
   try {
     var saved = localStorage.getItem('hongliTheme');
@@ -48,7 +47,6 @@
   --modal-link-hover: #D9EFFF;
   --danger-zone-bg: #FFF9F9;
 }
-
 [data-theme="dark"] {
   --bg: #1C1C1E;
   --bg-gradient: linear-gradient(135deg, #12121A 0%, #1E1E2F 50%, #16162A 100%);
@@ -79,7 +77,6 @@
   --modal-link-hover: #24445C;
   --danger-zone-bg: #2A1E1E;
 }
-
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
@@ -620,9 +617,10 @@ tr:hover td { background: var(--hover); }
             <input type="number" id="buyPrice" step="0.001" min="0" required>
           </div>
           <div class="form-group">
-            <label>买入金额（元）</label>
-            <input type="number" id="buyAmount" step="0.01" min="0" placeholder="例如：10000" required>
+            <label>买入份额</label>
+            <input type="number" id="buyShares" step="0.01" min="0" placeholder="例如：100.00" required>
           </div>
+          <div class="estimate">预计花费：<strong id="buyAmountPreview">¥0.00</strong></div>
           <div class="form-group">
             <label>可用现金：<span id="buyCashHint" style="color:var(--text2);"></span></label>
           </div>
@@ -737,11 +735,11 @@ tr:hover td { background: var(--hover); }
   <!-- 历史 -->
   <div id="tab-history" class="tab-content">
     <div class="card">
-      <div class="card-title">📜 全部交易流水</div>
+      <div class="card-title">📜 全部交易流水 <span style="font-size:13px;color:var(--text2);font-weight:400;">（可删除误操作记录）</span></div>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>日期</th><th>类型</th><th>基金</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th></tr>
+            <tr><th>日期</th><th>类型</th><th>基金</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th><th>操作</th></tr>
           </thead>
           <tbody id="historyTableBody"></tbody>
         </table>
@@ -856,7 +854,6 @@ const DEFAULT_PRICES = {
   '510880': 3.20, '515180': 1.50, '512890': 1.00, '510300': 4.00, '159915': 2.50
 };
 
-// 排序状态
 let sortKey = 'marketValue';
 let sortDir = 'desc';
 
@@ -1096,6 +1093,72 @@ function computeFundStats(id) {
   return { shares, avgCost, realizedPNL, totalDividend };
 }
 
+// 根据现有历史记录重新计算某基金的持仓和成本（用于删除记录后还原）
+function rebuildFundFromHistory(fundId) {
+  const stats = computeFundStats(fundId);
+  if (state.funds[fundId]) {
+    state.funds[fundId].shares = round2(stats.shares);
+    state.funds[fundId].avgCost = stats.avgCost ? round3(stats.avgCost) : 0;
+  }
+}
+
+function deleteHistory(id) {
+  // 找到记录
+  let idx = -1;
+  for (let i = 0; i < state.history.length; i++) {
+    if (state.history[i].id === id) { idx = i; break; }
+  }
+  if (idx === -1) return;
+
+  const h = state.history[idx];
+  const typeName = { buy: '买入', sell: '卖出', dividend: '分红', tax: '税补缴', fee: '费用' }[h.type] || h.type;
+
+  const confirmMsg = '⚠️ 确定删除这笔' + typeName + '记录吗？\n\n' +
+    (h.time || '') + ' ' + (state.funds[h.fundId] ? state.funds[h.fundId].name : h.fundId) + '\n' +
+    '金额：' + (h.amount ? fmtMoney(h.amount) : '—') + '\n\n' +
+    '删除后持仓和现金将自动重新计算。';
+
+  if (!confirm(confirmMsg)) return;
+
+  // 从历史中移除
+  state.history.splice(idx, 1);
+
+  // 若为分红或税补缴，也要从分红列表移除
+  if (h.type === 'dividend' || h.type === 'tax') {
+    if (h.dividendId) {
+      state.dividends = state.dividends.filter(function(d) { return d.id !== h.dividendId; });
+    } else {
+      // 没有关联ID时，尝试匹配相同基金、时间、金额
+      state.dividends = state.dividends.filter(function(d) {
+        return !(d.fundId === h.fundId && d.time === h.time && d.amount === h.amount);
+      });
+    }
+  }
+
+  // 调整现金
+  if (h.type === 'buy') {
+    // 原买入流出现金，现在返还
+    state.cash = round2(state.cash + (h.amount || 0) + (h.fee || 0));
+  } else if (h.type === 'sell') {
+    // 原卖出现金收入，现在扣回
+    state.cash = round2(state.cash - ((h.amount || 0) - (h.fee || 0)));
+  } else if (h.type === 'dividend') {
+    // 原分红现金收入，现在扣回
+    state.cash = round2(state.cash - (h.amount || 0));
+  } else if (h.type === 'tax' || h.type === 'fee') {
+    // 原扣款，现在返还
+    state.cash = round2(state.cash + (h.amount || 0));
+  }
+
+  // 重新计算该基金持仓和成本
+  rebuildFundFromHistory(h.fundId);
+
+  save();
+  renderAll();
+  refreshFundSelects();
+  alert('🗑️ 已删除该' + typeName + '记录，数据已自动更新。');
+}
+
 function toggleEdit(field) {
   const box = document.getElementById('editBox-' + field);
   const display = document.getElementById(field + 'Display');
@@ -1139,7 +1202,6 @@ function cancelEdit(field) {
 }
 
 function renderAccount() {
-  // 先读取所有现价输入框的值并保存
   const priceInputs = document.querySelectorAll('.price-input');
   for (let i = 0; i < priceInputs.length; i++) {
     const input = priceInputs[i];
@@ -1173,7 +1235,6 @@ function renderAccount() {
   const buyHint = document.getElementById('buyCashHint');
   if (buyHint) buyHint.textContent = fmtMoney(state.cash);
 
-  // 构建持仓行数据
   let rows = [];
   const closedFunds = [];
 
@@ -1212,7 +1273,6 @@ function renderAccount() {
     });
   }
 
-  // 排序
   if (sortKey) {
     rows.sort(function(a, b) {
       let valA, valB;
@@ -1234,7 +1294,6 @@ function renderAccount() {
     });
   }
 
-  // 生成表格行
   let html = '';
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -1259,10 +1318,8 @@ function renderAccount() {
   fpEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
   fpEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
 
-  // 更新排序箭头
   updateSortIndicators();
 
-  // 已清仓部分（保持不变）
   const closedCard = document.getElementById('closedPositionsCard');
   const closedBody = document.getElementById('closedTableBody');
 
@@ -1292,7 +1349,6 @@ function renderAccount() {
   closedCard.style.display = 'block';
 }
 
-// 更新表头排序箭头
 function updateSortIndicators() {
   const ths = document.querySelectorAll('#fundTable th.sortable');
   for (let i = 0; i < ths.length; i++) {
@@ -1308,7 +1364,6 @@ function updateSortIndicators() {
   }
 }
 
-// 点击表头排序
 function sortTable(key) {
   if (sortKey === key) {
     sortDir = sortDir === 'asc' ? 'desc' : 'asc';
@@ -1342,7 +1397,7 @@ function renderDividend() {
 function renderHistory() {
   const tbody = document.getElementById('historyTableBody');
   if (!state.history.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty">暂无交易记录</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty">暂无交易记录</div></td></tr>';
     return;
   }
   const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'], tax: ['税补缴', 'tag-tax'], fee: ['组合费', 'tag-fee'] };
@@ -1364,6 +1419,7 @@ function renderHistory() {
     html += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
     html += '<td>' + (h.amount ? fmtMoney(h.amount) : '—') + '</td>';
     html += '<td class="note-cell">' + (h.note ? esc(h.note) : '—') + '</td>';
+    html += '<td><button class="btn btn-danger btn-sm" onclick="deleteHistory(' + h.id + ')">删除</button></td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
@@ -1486,22 +1542,23 @@ function switchTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
-function buy(fundId, price, amount, note, date) {
+function buy(fundId, price, shares, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
-  if (amount > state.cash) { alert('现金不足！当前现金：' + fmtMoney(state.cash)); return; }
 
-  const shares = round2(amount / price);
-  if (shares <= 0) { alert('计算份额为0，请检查价格'); return; }
+  const buyShares = round2(shares);
+  if (buyShares <= 0) { alert('份额必须大于0'); return; }
 
-  const realAmount = round2(shares * price);
-  if (realAmount > state.cash) { alert('现金不足！'); return; }
+  const amount = round2(buyShares * price);
+  if (amount <= 0) { alert('计算金额为0，请检查价格'); return; }
 
-  const totalCost = fund.avgCost * fund.shares + realAmount;
-  fund.shares = round2(fund.shares + shares);
+  if (amount > state.cash) { alert('现金不足！需要 ' + fmtMoney(amount) + '，当前现金：' + fmtMoney(state.cash)); return; }
+
+  const totalCost = fund.avgCost * fund.shares + amount;
+  fund.shares = round2(fund.shares + buyShares);
   fund.avgCost = round3(totalCost / fund.shares);
 
-  state.cash = round2(state.cash - realAmount);
+  state.cash = round2(state.cash - amount);
 
   state.history.unshift({
     id: Date.now(),
@@ -1509,15 +1566,15 @@ function buy(fundId, price, amount, note, date) {
     type: 'buy',
     fundId: fundId,
     price: round3(price),
-    shares: shares,
-    amount: realAmount,
+    shares: buyShares,
+    amount: amount,
     fee: 0,
     note: note || ''
   });
 
   save();
   renderAll();
-  alert('✅ 买入成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n金额：' + fmtMoney(realAmount) + '\n剩余现金：' + fmtMoney(state.cash));
+  alert('✅ 买入成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(buyShares) + '\n总花费：' + fmtMoney(amount) + '\n剩余现金：' + fmtMoney(state.cash));
 }
 
 function sell(fundId, price, shares, note, date) {
@@ -2080,6 +2137,14 @@ function refreshFundSelects() {
   document.getElementById('buyPrice').value = state.prices[buyId] || 0;
   document.getElementById('sellPrice').value = state.prices[sellId] || 0;
   document.getElementById('sellAmount').textContent = '¥0.00';
+  updateBuyPreview();
+}
+
+function updateBuyPreview() {
+  const price = parseFloat(document.getElementById('buyPrice').value) || 0;
+  const shares = parseFloat(document.getElementById('buyShares').value) || 0;
+  const amount = round2(shares * price);
+  document.getElementById('buyAmountPreview').textContent = fmtMoney(amount);
 }
 
 function openFundDetail(id) {
@@ -2194,6 +2259,7 @@ function initTradeForms() {
     document.getElementById(selectId).addEventListener('change', function() {
       const id = this.value;
       document.getElementById(priceId).value = state.prices[id] || 0;
+      updateBuyPreview();
     });
   }
   syncPrice('buyFund', 'buyPrice');
@@ -2206,6 +2272,14 @@ function initTradeForms() {
   }
   document.getElementById('sellShares').addEventListener('input', calcSellAmount);
   document.getElementById('sellPrice').addEventListener('input', calcSellAmount);
+
+  // 买入份额输入时更新预计花费
+  document.getElementById('buyShares').addEventListener('input', updateBuyPreview);
+  document.getElementById('buyPrice').addEventListener('input', updateBuyPreview);
+  document.getElementById('buyFund').addEventListener('change', function() {
+    document.getElementById('buyPrice').value = state.prices[this.value] || 0;
+    updateBuyPreview();
+  });
 
   document.getElementById('btnSellAll').addEventListener('click', function() {
     const fundId = document.getElementById('sellFund').value;
@@ -2220,14 +2294,15 @@ function initTradeForms() {
     const fundId = document.getElementById('buyFund').value;
     const date = document.getElementById('buyDate').value;
     const price = parseFloat(document.getElementById('buyPrice').value);
-    const amount = parseFloat(document.getElementById('buyAmount').value);
+    const shares = parseFloat(document.getElementById('buyShares').value);
     const note = document.getElementById('buyNote').value.trim();
     if (!date) { alert('请选择交易日期'); return; }
     if (!price || price <= 0) { alert('请输入有效价格'); return; }
-    if (!amount || amount <= 0) { alert('请输入有效买入金额'); return; }
-    buy(fundId, price, amount, note, date);
-    document.getElementById('buyAmount').value = '';
+    if (!shares || shares <= 0) { alert('请输入有效买入份额'); return; }
+    buy(fundId, price, shares, note, date);
+    document.getElementById('buyShares').value = '';
     document.getElementById('buyNote').value = '';
+    updateBuyPreview();
   });
 
   document.getElementById('sellForm').addEventListener('submit', function(e) {
@@ -2276,7 +2351,6 @@ function init() {
     segments[i].addEventListener('click', function() { switchTab(this.dataset.tab); });
   }
 
-  // 绑定表头点击事件
   const sortableThs = document.querySelectorAll('#fundTable th.sortable');
   for (let i = 0; i < sortableThs.length; i++) {
     sortableThs[i].addEventListener('click', function() {
@@ -2309,6 +2383,7 @@ window.deleteDividend = deleteDividend;
 window.deleteNote = deleteNote;
 window.updateIndex = updateIndex;
 window.toggleTheme = toggleTheme;
+window.deleteHistory = deleteHistory;
 
 })();
 </script>
