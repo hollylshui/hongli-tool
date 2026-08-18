@@ -1358,8 +1358,10 @@ function updateSortIndicators() {
     if (!arrowEl) continue;
     if (key === sortKey) {
       arrowEl.textContent = sortDir === 'asc' ? ' ▲' : ' ▼';
+      th.style.color = 'var(--primary)';
     } else {
       arrowEl.textContent = '';
+      th.style.color = '';
     }
   }
 }
@@ -2351,12 +2353,13 @@ function init() {
     segments[i].addEventListener('click', function() { switchTab(this.dataset.tab); });
   }
 
-  const sortableThs = document.querySelectorAll('#fundTable th.sortable');
-  for (let i = 0; i < sortableThs.length; i++) {
-    sortableThs[i].addEventListener('click', function() {
-      sortTable(this.dataset.sortKey);
-    });
-  }
+  // 使用事件委托：表格内任何点击，只要是 th.sortable 就触发排序
+  document.getElementById('fundTable').addEventListener('click', function(e) {
+    const th = e.target.closest('th.sortable');
+    if (th) {
+      sortTable(th.dataset.sortKey);
+    }
+  });
 
   initTradeForms();
   renderAll();
