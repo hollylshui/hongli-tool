@@ -376,6 +376,15 @@ tr:hover td { background: #F9F9FB; }
   .card { padding: 18px; }
   .modal-card { padding: 18px; }
 }
+.add-fund-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.add-fund-form div { display: flex; flex-direction: column; gap: 4px; }
+.add-fund-form label { font-size: 12px; color: var(--text2); }
+.add-fund-form button { align-self: flex-end; }
 </style>
 </head>
 <body>
@@ -668,6 +677,9 @@ tr:hover td { background: #F9F9FB; }
 </div>
 
 <script>
+(function() {
+'use strict';
+
 const STORAGE_KEY = 'hongliProState';
 const LEGACY_KEYS = ['hongliTool', 'hongli_data', 'dividendTool', 'hongliPro'];
 
@@ -698,6 +710,19 @@ let state = null;
 
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function mergeFunds(savedFunds) {
+  const merged = {};
+  for (const id in DEFAULT_FUNDS) {
+    merged[id] = Object.assign({}, DEFAULT_FUNDS[id], savedFunds[id] || {});
+  }
+  for (const id in savedFunds) {
+    if (!merged[id]) {
+      merged[id] = Object.assign({ id: id, name: id, shares: 0, avgCost: 0, annualDividend: 0, link: '' }, savedFunds[id]);
+    }
+  }
+  return merged;
 }
 
 function loadState() {
@@ -752,63 +777,74 @@ function loadState() {
   save();
 }
 
-function mergeFunds(savedFunds) {
-  const merged = {};
-  for (const id in DEFAULT_FUNDS) {
-    merged[id] = Object.assign({}, DEFAULT_FUNDS[id], savedFunds[id] || {});
-  }
-  for (const id in savedFunds) {
-    if (!merged[id]) {
-      merged[id] = Object.assign({ id: id, name: id, shares: 0, avgCost: 0, annualDividend: 0, link: '' }, savedFunds[id]);
-    }
-  }
-  return merged;
+// ---------- 格式化与转义 ----------
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function fmtMoney(n) {
   if (isNaN(n)) return '¥0.00';
   return '¥' + Number(n).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+
 function fmtNumber(n, d) {
   if (d === undefined) d = 2;
   if (isNaN(n)) return '0.00';
   return Number(n).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
+
 function fmtPrice(n) {
   if (isNaN(n)) return '¥0.000';
   return '¥' + Number(n).toFixed(3);
 }
+
+function round2(n) { return Math.round(n * 100) / 100; }
+function round3(n) { return Math.round(n * 1000) / 1000; }
+
 function getStockValue() {
   let total = 0;
   for (const id in state.funds) {
-    if ((state.funds[id].shares || 0) > 0) {
-      total += state.funds[id].shares * (state.prices[id] || 0);
+    const f = state.funds[id];
+    if ((f.shares || 0) > 0) {
+      total += f.shares * (state.prices[id] || 0);
     }
   }
   return total;
 }
+
 function getTotalAsset() { return state.cash + getStockValue(); }
+
 function fundLabel(id) {
   const f = state.funds[id];
   if (!f) return id;
   return f.name + '（' + id + '）';
 }
+
 function formatDateTime(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return iso;
   const p = function(n) { return String(n).padStart(2, '0'); };
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
+
 function formatHistoryTime(t) {
   if (typeof t !== 'string') return formatDateTime(t);
   if (t.indexOf('T') >= 0 || t.indexOf(' ') >= 0) return formatDateTime(t);
   return t;
 }
+
 function getLocalDate() {
   const d = new Date();
   const p = function(n) { return String(n).padStart(2, '0'); };
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
 }
+
+// ---------- 文件下载 ----------
 function saveFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime + ';charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -819,6 +855,7 @@ function saveFile(filename, content, mime) {
   a.click();
   setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
 }
+
 function downloadCSV(filename, headers, rows) {
   const BOM = '\uFEFF';
   const esc = function(v) {
@@ -831,49 +868,9 @@ function downloadCSV(filename, headers, rows) {
   saveFile(filename, BOM + content, 'text/csv');
 }
 
-function toggleEdit(field) {
-  const box = document.getElementById('editBox-' + field);
-  const display = document.getElementById(field + 'Display');
-  if (box.style.display === 'none') {
-    const input = document.getElementById(field === 'cash' ? 'editCashInput' : 'editTotalInput');
-    input.value = (field === 'cash' ? state.cash : getTotalAsset()).toFixed(2);
-    box.style.display = 'flex';
-    display.style.opacity = 0.3;
-    input.focus();
-    input.select();
-  } else cancelEdit(field);
-}
-function saveEdit(field) {
-  const input = document.getElementById(field === 'cash' ? 'editCashInput' : 'editTotalInput');
-  const val = parseFloat(input.value);
-  if (isNaN(val) || val < 0) { alert('请输入有效金额'); return; }
-  if (field === 'cash') {
-    state.cash = Math.round(val * 100) / 100;
-  } else {
-    const stockVal = getStockValue();
-    const newCash = val - stockVal;
-    if (newCash < 0) {
-      alert('当前持仓市值 ' + fmtMoney(stockVal) + '，总资产不能低于持仓市值。');
-      return;
-    }
-    state.cash = Math.round(newCash * 100) / 100;
-  }
-  save();
-  renderAll();
-  cancelEdit(field);
-}
-function cancelEdit(field) {
-  const box = document.getElementById('editBox-' + field);
-  const display = document.getElementById(field + 'Display');
-  box.style.display = 'none';
-  display.style.opacity = 1;
-}
-
+// ---------- 统计核心 ----------
 function fundHasHistory(id) {
-  for (let i = 0; i < state.history.length; i++) {
-    if (state.history[i].fundId === id) return true;
-  }
-  return false;
+  return state.history.some(function(h) { return h.fundId === id; });
 }
 
 function computeFundStats(id) {
@@ -891,32 +888,74 @@ function computeFundStats(id) {
     const h = records[i];
     if (h.type === 'buy') {
       const buyShares = h.shares || 0;
-      const buyAmount = h.amount || 0;
       const fee = h.fee || 0;
-      const totalCost = buyAmount + fee;
+      const totalCost = (h.amount || 0) + fee;
       if (buyShares <= 0) continue;
       const oldCost = shares * avgCost;
       shares += buyShares;
       avgCost = (oldCost + totalCost) / shares;
     } else if (h.type === 'sell') {
       const sellShares = h.shares || 0;
-      const sellAmount = h.amount || 0;
-      const fee = h.fee || 0;
       if (sellShares <= 0) continue;
-      const netAmount = sellAmount - fee;
+      const netAmount = (h.amount || 0) - (h.fee || 0);
       const costBasis = sellShares * avgCost;
       realizedPNL += netAmount - costBasis;
       shares -= sellShares;
-      if (shares < 0.001) shares = 0;
+      if (shares < 0.001) { shares = 0; avgCost = 0; }
     } else if (h.type === 'dividend') {
       totalDividend += h.amount || 0;
     } else if (h.type === 'tax') {
       totalDividend -= h.amount || 0;
     }
   }
+
   return { shares, avgCost, realizedPNL, totalDividend };
 }
 
+// ---------- 编辑总资产/现金 ----------
+function toggleEdit(field) {
+  const box = document.getElementById('editBox-' + field);
+  const display = document.getElementById(field + 'Display');
+  if (box.style.display === 'none') {
+    const input = document.getElementById(field === 'cash' ? 'editCashInput' : 'editTotalInput');
+    input.value = (field === 'cash' ? state.cash : getTotalAsset()).toFixed(2);
+    box.style.display = 'flex';
+    display.style.opacity = 0.3;
+    input.focus();
+    input.select();
+  } else {
+    cancelEdit(field);
+  }
+}
+
+function saveEdit(field) {
+  const input = document.getElementById(field === 'cash' ? 'editCashInput' : 'editTotalInput');
+  const val = parseFloat(input.value);
+  if (isNaN(val) || val < 0) { alert('请输入有效金额'); return; }
+  if (field === 'cash') {
+    state.cash = round2(val);
+  } else {
+    const stockVal = getStockValue();
+    const newCash = val - stockVal;
+    if (newCash < 0) {
+      alert('当前持仓市值 ' + fmtMoney(stockVal) + '，总资产不能低于持仓市值。');
+      return;
+    }
+    state.cash = round2(newCash);
+  }
+  save();
+  renderAll();
+  cancelEdit(field);
+}
+
+function cancelEdit(field) {
+  const box = document.getElementById('editBox-' + field);
+  const display = document.getElementById(field + 'Display');
+  box.style.display = 'none';
+  display.style.opacity = 1;
+}
+
+// ---------- 渲染 ----------
 function renderAccount() {
   const totalAsset = getTotalAsset();
   const stockVal = getStockValue();
@@ -938,9 +977,6 @@ function renderAccount() {
   }
 
   const fpEl = document.getElementById('floatProfit');
-  fpEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
-  fpEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
-
   const buyHint = document.getElementById('buyCashHint');
   if (buyHint) buyHint.textContent = fmtMoney(state.cash);
 
@@ -967,8 +1003,8 @@ function renderAccount() {
     totalFloatProfit += floatProfit;
 
     html += '<tr>';
-    html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + id + '\')">' + fundLabel(id) + '</button></td>';
-    html += '<td><input type="number" class="price-input" data-id="' + id + '" value="' + price.toFixed(3) + '" step="0.001" min="0"></td>';
+    html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + esc(id) + '\')">' + esc(fundLabel(id)) + '</button></td>';
+    html += '<td><input type="number" class="price-input" data-id="' + esc(id) + '" value="' + price.toFixed(3) + '" step="0.001" min="0"></td>';
     html += '<td>' + fmtNumber(shares) + '</td>';
     html += '<td>' + (f.avgCost ? fmtPrice(f.avgCost) : '—') + '</td>';
     html += '<td>' + fmtMoney(marketValue) + '</td>';
@@ -978,7 +1014,7 @@ function renderAccount() {
     html += '<td class="' + (stats.realizedPNL + stats.totalDividend >= 0 ? 'profit' : 'loss') + '">' + (stats.realizedPNL + stats.totalDividend >= 0 ? '+' : '') + fmtMoney(stats.realizedPNL + stats.totalDividend) + '</td>';
     html += '<td>' + cumYield.toFixed(2) + '%</td>';
     html += '<td>' + staticYield.toFixed(2) + '%</td>';
-    html += '<td><button class="btn btn-ghost btn-sm" onclick="goToSell(\'' + id + '\')">卖出</button></td>';
+    html += '<td><button class="btn btn-ghost btn-sm" onclick="goToSell(\'' + esc(id) + '\')">卖出</button></td>';
     html += '</tr>';
   }
 
@@ -1005,11 +1041,11 @@ function renderAccount() {
     const finalReturn = stats.realizedPNL + stats.totalDividend;
 
     closedHtml += '<tr>';
-    closedHtml += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + id + '\')">' + fundLabel(id) + '</button> <span class="tag tag-closed">已清仓</span></td>';
+    closedHtml += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + esc(id) + '\')">' + esc(fundLabel(id)) + '</button> <span class="tag tag-closed">已清仓</span></td>';
     closedHtml += '<td>' + fmtPrice(price) + '</td>';
     closedHtml += '<td>' + fmtMoney(stats.totalDividend) + '</td>';
     closedHtml += '<td class="' + (finalReturn >= 0 ? 'profit' : 'loss') + '">' + (finalReturn >= 0 ? '+' : '') + fmtMoney(finalReturn) + '</td>';
-    closedHtml += '<td><button class="btn btn-ghost btn-sm" onclick="openFundDetail(\'' + id + '\')">详情</button></td>';
+    closedHtml += '<td><button class="btn btn-ghost btn-sm" onclick="openFundDetail(\'' + esc(id) + '\')">详情</button></td>';
     closedHtml += '</tr>';
   }
   closedBody.innerHTML = closedHtml;
@@ -1027,8 +1063,8 @@ function renderDividend() {
     const d = state.dividends[i];
     const isNeg = d.amount < 0;
     html += '<tr>';
-    html += '<td>' + d.time + '</td>';
-    html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + d.fundId + '\')">' + fundLabel(d.fundId) + '</button></td>';
+    html += '<td>' + esc(d.time) + '</td>';
+    html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + esc(d.fundId) + '\')">' + esc(fundLabel(d.fundId)) + '</button></td>';
     html += '<td style="color:' + (isNeg ? 'var(--danger)' : 'var(--warning)') + ';font-weight:600;">' + (isNeg ? '-' : '+') + fmtMoney(Math.abs(d.amount)) + (isNeg ? '（税补缴）' : '') + '</td>';
     html += '<td><button class="btn btn-danger btn-sm" onclick="deleteDividend(' + d.id + ')">删除</button></td>';
     html += '</tr>';
@@ -1048,19 +1084,19 @@ function renderHistory() {
     const h = state.history[i];
     const tInfo = typeMap[h.type] || [h.type, ''];
     html += '<tr>';
-    html += '<td style="white-space:nowrap;">' + formatHistoryTime(h.time) + '</td>';
+    html += '<td style="white-space:nowrap;">' + esc(formatHistoryTime(h.time)) + '</td>';
     html += '<td><span class="tag ' + tInfo[1] + '">' + tInfo[0] + '</span></td>';
     html += '<td>';
     if (state.funds[h.fundId]) {
-      html += '<button class="fund-name-link" onclick="openFundDetail(\'' + h.fundId + '\')">' + fundLabel(h.fundId) + '</button>';
+      html += '<button class="fund-name-link" onclick="openFundDetail(\'' + esc(h.fundId) + '\')">' + esc(fundLabel(h.fundId)) + '</button>';
     } else {
-      html += '<span class="fund-name">' + fundLabel(h.fundId) + '</span>';
+      html += '<span class="fund-name">' + esc(fundLabel(h.fundId)) + '</span>';
     }
     html += '</td>';
     html += '<td>' + (h.price ? fmtPrice(h.price) : '—') + '</td>';
     html += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
     html += '<td>' + (h.amount ? fmtMoney(h.amount) : '—') + '</td>';
-    html += '<td class="note-cell">' + (h.note ? h.note : '—') + '</td>';
+    html += '<td class="note-cell">' + (h.note ? esc(h.note) : '—') + '</td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
@@ -1072,12 +1108,12 @@ function renderSettings() {
   for (const id in state.funds) {
     const f = state.funds[id];
     html += '<tr>';
-    html += '<td style="font-family:monospace;font-weight:600;">' + id + '</td>';
-    html += '<td><input type="text" class="settings-input fund-name-input" data-id="' + id + '" value="' + f.name + '"></td>';
-    html += '<td><input type="number" class="settings-input fund-div-input" data-id="' + id + '" value="' + f.annualDividend + '" step="0.001" min="0" style="max-width:110px;"></td>';
-    html += '<td><input type="url" class="settings-input fund-link-input" data-id="' + id + '" value="' + (f.link || '') + '" placeholder="https://..."></td>';
+    html += '<td style="font-family:monospace;font-weight:600;">' + esc(id) + '</td>';
+    html += '<td><input type="text" class="settings-input fund-name-input" data-id="' + esc(id) + '" value="' + esc(f.name) + '"></td>';
+    html += '<td><input type="number" class="settings-input fund-div-input" data-id="' + esc(id) + '" value="' + f.annualDividend + '" step="0.001" min="0" style="max-width:110px;"></td>';
+    html += '<td><input type="url" class="settings-input fund-link-input" data-id="' + esc(id) + '" value="' + esc(f.link || '') + '" placeholder="https://..."></td>';
     html += '<td>' + fmtPrice(state.prices[id] || 0) + '</td>';
-    html += '<td><button class="delete-fund-btn" onclick="deleteFund(\'' + id + '\')">删除</button></td>';
+    html += '<td><button class="delete-fund-btn" onclick="deleteFund(\'' + esc(id) + '\')">删除</button></td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
@@ -1105,19 +1141,36 @@ function switchTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
+// ---------- 交易操作 ----------
 function buy(fundId, price, amount, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
   if (amount > state.cash) { alert('现金不足！当前现金：' + fmtMoney(state.cash)); return; }
-  const shares = Math.round((amount / price) * 100) / 100;
+
+  const shares = round2(amount / price);
   if (shares <= 0) { alert('计算份额为0，请检查价格'); return; }
-  const realAmount = Math.round(shares * price * 100) / 100;
+
+  const realAmount = round2(shares * price);
   if (realAmount > state.cash) { alert('现金不足！'); return; }
+
   const totalCost = fund.avgCost * fund.shares + realAmount;
-  fund.shares += shares;
-  fund.avgCost = Math.round((totalCost / fund.shares) * 1000) / 1000;
-  state.cash -= realAmount;
-  state.history.unshift({ id: Date.now(), time: date || getLocalDate(), type: 'buy', fundId: fundId, price: Math.round(price * 1000) / 1000, shares: shares, amount: realAmount, fee: 0, note: note || '' });
+  fund.shares = round2(fund.shares + shares);
+  fund.avgCost = round3(totalCost / fund.shares);
+
+  state.cash = round2(state.cash - realAmount);
+
+  state.history.unshift({
+    id: Date.now(),
+    time: date || getLocalDate(),
+    type: 'buy',
+    fundId: fundId,
+    price: round3(price),
+    shares: shares,
+    amount: realAmount,
+    fee: 0,
+    note: note || ''
+  });
+
   save();
   renderAll();
   alert('✅ 买入成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n金额：' + fmtMoney(realAmount) + '\n剩余现金：' + fmtMoney(state.cash));
@@ -1127,11 +1180,27 @@ function sell(fundId, price, shares, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
   if (shares > fund.shares) { alert('份额不足！可卖份额：' + fmtNumber(fund.shares)); return; }
-  const amount = Math.round(shares * price * 100) / 100;
-  fund.shares = Math.round((fund.shares - shares) * 100) / 100;
-  if (fund.shares < 0.001) { fund.shares = 0; fund.avgCost = 0; }
-  state.cash += amount;
-  state.history.unshift({ id: Date.now(), time: date || getLocalDate(), type: 'sell', fundId: fundId, price: Math.round(price * 1000) / 1000, shares: shares, amount: amount, fee: 0, note: note || '' });
+
+  const amount = round2(shares * price);
+  fund.shares = round2(fund.shares - shares);
+  if (fund.shares < 0.001) {
+    fund.shares = 0;
+    fund.avgCost = 0;
+  }
+  state.cash = round2(state.cash + amount);
+
+  state.history.unshift({
+    id: Date.now(),
+    time: date || getLocalDate(),
+    type: 'sell',
+    fundId: fundId,
+    price: round3(price),
+    shares: shares,
+    amount: amount,
+    fee: 0,
+    note: note || ''
+  });
+
   save();
   renderAll();
   alert('✅ 卖出成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n到账：' + fmtMoney(amount) + '\n当前现金：' + fmtMoney(state.cash));
@@ -1140,13 +1209,27 @@ function sell(fundId, price, shares, note, date) {
 function addDividend(fundId, date, amount) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
-  state.cash += amount;
+
+  const safeAmount = round2(amount);
+  state.cash = round2(state.cash + safeAmount);
+
   const did = Date.now();
-  state.dividends.unshift({ id: did, time: date, fundId: fundId, amount: amount });
-  state.history.unshift({ id: Date.now(), time: date, type: 'dividend', fundId: fundId, price: 0, shares: 0, amount: amount, note: '', dividendId: did });
+  state.dividends.unshift({ id: did, time: date, fundId: fundId, amount: safeAmount });
+  state.history.unshift({
+    id: Date.now(),
+    time: date,
+    type: 'dividend',
+    fundId: fundId,
+    price: 0,
+    shares: 0,
+    amount: safeAmount,
+    note: '',
+    dividendId: did
+  });
+
   save();
   renderAll();
-  alert('🧧 分红登记成功！\n' + fundLabel(fundId) + '\n日期：' + date + '\n金额：' + fmtMoney(amount) + '\n已自动加入现金。');
+  alert('🧧 分红登记成功！\n' + fundLabel(fundId) + '\n日期：' + date + '\n金额：' + fmtMoney(safeAmount) + '\n已自动加入现金。');
 }
 
 function deleteDividend(id) {
@@ -1155,37 +1238,39 @@ function deleteDividend(id) {
     if (state.dividends[i].id === id) { div = state.dividends[i]; break; }
   }
   if (!div) return;
+
   const isTax = div.amount < 0;
-  const confirmMsg = isTax ? '删除该税补缴记录，对应金额将退回现金。确认继续？' : '删除该分红记录，金额将从现金中扣除。确认继续？';
+  const confirmMsg = isTax
+    ? '删除该税补缴记录，对应金额将退回现金。确认继续？'
+    : '删除该分红记录，金额将从现金中扣除。确认继续？';
   if (!confirm(confirmMsg)) return;
-  state.cash -= div.amount;
-  const newDividends = [];
-  for (let i = 0; i < state.dividends.length; i++) if (state.dividends[i].id !== id) newDividends.push(state.dividends[i]);
-  state.dividends = newDividends;
-  const newHistory = [];
-  for (let i = 0; i < state.history.length; i++) {
-    const h = state.history[i];
-    const isTarget = h.dividendId === id || (h.type === 'dividend' && h.time === div.time && h.amount === div.amount && h.fundId === div.fundId);
-    if (!isTarget) newHistory.push(h);
-  }
-  state.history = newHistory;
+
+  state.cash = round2(state.cash - div.amount);
+
+  state.dividends = state.dividends.filter(function(d) { return d.id !== id; });
+  state.history = state.history.filter(function(h) {
+    return h.dividendId !== id && !(h.type === 'dividend' && h.time === div.time && h.amount === div.amount && h.fundId === div.fundId);
+  });
+
   save();
   renderAll();
   alert(isTax ? '已删除税补缴记录，现金已退回。' : '已删除分红，现金已相应扣除。');
 }
 
+// ---------- 价格修改 ----------
 document.addEventListener('change', function(e) {
   if (e.target.classList && e.target.classList.contains('price-input')) {
     const id = e.target.dataset.id;
     const val = parseFloat(e.target.value);
     if (!isNaN(val) && val > 0) {
-      state.prices[id] = Math.round(val * 1000) / 1000;
+      state.prices[id] = round3(val);
       save();
       renderAccount();
     }
   }
 });
 
+// ---------- 跳转卖出 ----------
 function goToSell(fundId) {
   switchTab('trade');
   document.getElementById('sellFund').value = fundId;
@@ -1195,12 +1280,14 @@ function goToSell(fundId) {
   document.getElementById('sellShares').focus();
 }
 
+// ---------- 导出 ----------
 function exportJSON() {
   const data = JSON.stringify(Object.assign({}, state, { exportedAt: new Date().toISOString() }), null, 2);
   const date = new Date().toISOString().split('T')[0];
   saveFile('hongli-backup-' + date + '.json', data, 'application/json');
   alert('✅ 完整数据备份已导出！');
 }
+
 function exportHoldingsCSV() {
   const headers = ['基金代码', '基金名称', '持仓份额', '成本价', '现价', '市值', '浮动盈亏', '已实现收益', '累计分红率', '静态股息率'];
   const rows = [];
@@ -1219,6 +1306,7 @@ function exportHoldingsCSV() {
   downloadCSV('hongli-holdings.csv', headers, rows);
   alert('✅ 持仓CSV已导出！');
 }
+
 function exportHistoryCSV() {
   const headers = ['日期', '类型', '基金代码', '基金名称', '价格', '份额', '金额', '心得'];
   const typeMap = { buy: '买入', sell: '卖出', dividend: '分红', tax: '税补缴', fee: '组合费' };
@@ -1226,12 +1314,22 @@ function exportHistoryCSV() {
   for (let i = 0; i < state.history.length; i++) {
     const h = state.history[i];
     const f = state.funds[h.fundId] || {};
-    rows.push([formatHistoryTime(h.time), typeMap[h.type] || h.type, h.fundId, f.name || '', h.price || '', h.shares || '', h.amount || '', h.note || '']);
+    rows.push([
+      formatHistoryTime(h.time),
+      typeMap[h.type] || h.type,
+      h.fundId,
+      f.name || '',
+      h.price || '',
+      h.shares || '',
+      h.amount || '',
+      h.note || ''
+    ]);
   }
   downloadCSV('hongli-history.csv', headers, rows);
   alert('✅ 交易流水CSV已导出！');
 }
 
+// ---------- 导入 JSON ----------
 document.getElementById('importFile').addEventListener('change', function(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -1239,8 +1337,11 @@ document.getElementById('importFile').addEventListener('change', function(e) {
   reader.onload = function(ev) {
     try {
       const data = JSON.parse(ev.target.result);
-      if (typeof data.cash !== 'number' || !data.funds || typeof data.funds !== 'object') throw new Error('文件格式不正确');
+      if (typeof data.cash !== 'number' || !data.funds || typeof data.funds !== 'object') {
+        throw new Error('文件格式不正确');
+      }
       if (!confirm('导入将覆盖当前所有数据，确认继续？')) return;
+
       state = {
         version: 3,
         initialCapital: typeof data.initialCapital === 'number' ? data.initialCapital : 0,
@@ -1254,12 +1355,15 @@ document.getElementById('importFile').addEventListener('change', function(e) {
       renderAll();
       refreshFundSelects();
       alert('✅ 数据导入成功！');
-    } catch (err) { alert('❌ 导入失败：' + err.message); }
+    } catch (err) {
+      alert('❌ 导入失败：' + err.message);
+    }
   };
   reader.readAsText(file);
   e.target.value = '';
 });
 
+// ---------- 交割单导入 ----------
 function findColumn(keys, candidates) {
   for (let i = 0; i < candidates.length; i++) {
     for (let j = 0; j < keys.length; j++) {
@@ -1290,10 +1394,11 @@ function parseStatementCell(row, column, type) {
   return val;
 }
 
-function safeAddHistory(item) { state.history.unshift(item); }
-
 function parseStatementFile(file) {
-  if (!window.XLSX) { alert('❌ Excel解析库加载失败，请检查网络连接后重试（需访问 CDN）。'); return; }
+  if (!window.XLSX) {
+    alert('❌ Excel解析库加载失败，请检查网络连接后重试（需访问 CDN）。');
+    return;
+  }
   const reader = new FileReader();
   reader.onload = function(ev) {
     try {
@@ -1301,16 +1406,17 @@ function parseStatementFile(file) {
       const isCsv = fileName.endsWith('.csv') || fileName.endsWith('.txt');
       let data;
       if (isCsv) {
-        const text = ev.target.result;
-        data = XLSX.read(text, { type: 'string' });
+        data = XLSX.read(ev.target.result, { type: 'string' });
       } else {
-        const arrayBuffer = ev.target.result;
-        data = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+        data = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
       }
+
       const sheetName = data.SheetNames[0];
       const sheet = data.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
       if (!rows || rows.length === 0) { alert('⚠️ 文件中没有数据'); return; }
+
       const keys = Object.keys(rows[0]);
       const timeCol = findColumn(keys, ['交收日期', '成交时间', '成交日期', '交易时间', '交易日期', '日期时间', '发生日期', '业务日期', '清算日期', '委托时间', '委托日期', '时间', '日期', '业务时间', '记录时间']);
       const typeCol = findColumn(keys, ['业务类型', '业务名称', '操作', '买卖标志', '交易类型', '类型', '业务']);
@@ -1320,106 +1426,209 @@ function parseStatementFile(file) {
       const sharesCol = findColumn(keys, ['成交数量', '成交量', '成交份额', '数量', '份额']);
       const amountCol = findColumn(keys, ['成交金额', '成交额', '金额', '发生金额', '清算金额']);
       const feeCol = findColumn(keys, ['手续费', '费用', '佣金', '印花税', '过户费']);
-      if (!codeCol || !typeCol) { alert('❌ 无法识别必要的列（代码/类型），请检查文件格式。\n当前列名：' + keys.join(', ')); return; }
+
+      if (!codeCol || !typeCol) {
+        alert('❌ 无法识别必要的列（代码/类型），请检查文件格式。\n当前列名：' + keys.join(', '));
+        return;
+      }
+
       let successCount = 0;
       let skipCount = 0;
       const errors = [];
+
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const typeText = String(parseStatementCell(row, typeCol, 'string') || '');
         let tradeType = null;
+
         if (typeText.match(/税补缴|补缴税|红利税|股息税|分红税/)) tradeType = 'tax';
         else if (typeText.match(/组合费|杂费|费用收取|账户管理费/)) tradeType = 'fee';
         else if (typeText.match(/买|申购|买入|转入/)) tradeType = 'buy';
         else if (typeText.match(/卖|赎回|卖出|转出/)) tradeType = 'sell';
         else if (typeText.match(/分红|红利|股息|股利/)) tradeType = 'dividend';
-        else { skipCount++; errors.push('第' + (i+1) + '行：无法识别业务类型「' + typeText + '」'); continue; }
+        else {
+          skipCount++;
+          errors.push('第' + (i+1) + '行：无法识别业务类型「' + typeText + '」');
+          continue;
+        }
+
         const code = String(parseStatementCell(row, codeCol, 'string') || '').trim();
         const name = parseStatementCell(row, nameCol, 'string') || code;
-        if (!code) { skipCount++; errors.push('第' + (i+1) + '行：缺少证券代码'); continue; }
+        if (!code) {
+          skipCount++;
+          errors.push('第' + (i+1) + '行：缺少证券代码');
+          continue;
+        }
+
         let price = parseStatementCell(row, priceCol, 'number') || 0;
         let shares = parseStatementCell(row, sharesCol, 'number') || 0;
         let amount = parseStatementCell(row, amountCol, 'number') || 0;
         let fee = parseStatementCell(row, feeCol, 'number') || 0;
+
         let timeRaw = parseStatementCell(row, timeCol, 'string') || getLocalDate();
         if (typeof timeRaw === 'number' || /^\d{4,5}$/.test(String(timeRaw))) {
           const serial = Number(timeRaw);
           if (serial > 20000 && serial < 60000) {
             const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
-            if (!isNaN(d.getTime())) timeRaw = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+            if (!isNaN(d.getTime())) {
+              timeRaw = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+            }
           }
         }
         timeRaw = String(timeRaw).replace(/\//g, '-').replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '').trim();
         if (!timeRaw) timeRaw = getLocalDate();
         const displayTime = timeRaw;
-        if (!state.funds[code]) state.funds[code] = { id: code, name: name, shares: 0, avgCost: 0, annualDividend: 0, link: '' };
+
+        if (!state.funds[code]) {
+          state.funds[code] = { id: code, name: name, shares: 0, avgCost: 0, annualDividend: 0, link: '' };
+        }
+
+        // 税补缴 / 组合费
         if (tradeType === 'tax' || tradeType === 'fee') {
           const deductAmount = Math.abs(amount) || 0;
-          state.cash -= deductAmount;
+          state.cash = round2(state.cash - deductAmount);
           const did = Date.now() + 1;
-          safeAddHistory({ id: Date.now(), time: displayTime, type: tradeType, fundId: code, price: 0, shares: 0, amount: deductAmount, note: tradeType === 'tax' ? '🗂 红利税补缴' : '🧾 港股通组合费', dividendId: tradeType === 'tax' ? did : undefined });
-          if (tradeType === 'tax' && deductAmount > 0) state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: -deductAmount });
+          state.history.unshift({
+            id: Date.now(),
+            time: displayTime,
+            type: tradeType,
+            fundId: code,
+            price: 0,
+            shares: 0,
+            amount: deductAmount,
+            note: tradeType === 'tax' ? '🗂 红利税补缴' : '🧾 港股通组合费',
+            dividendId: tradeType === 'tax' ? did : undefined
+          });
+          if (tradeType === 'tax' && deductAmount > 0) {
+            state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: -deductAmount });
+          }
           successCount++;
           continue;
         }
-        let cashChange = 0;
-        if (tradeType === 'buy') {
-          if (amountCol && amount < 0) cashChange = amount;
-          else cashChange = -(amount + fee);
-        } else if (tradeType === 'sell') {
-          if (amountCol && amount > 0) cashChange = amount;
-          else cashChange = amount - fee;
-        } else cashChange = amount > 0 ? amount : (amount + fee);
+
         const fund = state.funds[code];
+
         if (tradeType === 'buy') {
           const buyShares = Math.abs(shares);
-          const buyCost = (amount !== 0 ? Math.abs(amount) : (price * buyShares)) + fee;
+          if (buyShares <= 0) {
+            skipCount++;
+            errors.push('第' + (i+1) + '行：买入份额为0');
+            continue;
+          }
+          // 通过成交金额反推价格，若金额缺失则用 price
+          const effectivePrice = amount !== 0 && buyShares > 0 ? Math.abs(amount) / buyShares : price;
+          const buyAmount = round2(buyShares * effectivePrice);
+          const totalCost = buyAmount + fee;
+
           const oldShares = fund.shares;
           const oldCost = fund.avgCost * oldShares;
           const newShares = oldShares + buyShares;
-          const newCost = oldCost + buyCost;
-          fund.shares = Math.round(newShares * 100) / 100;
-          fund.avgCost = Math.round((newCost / newShares) * 1000) / 1000;
-          state.cash += cashChange;
-          safeAddHistory({ id: Date.now(), time: displayTime, type: 'buy', fundId: code, price: Math.round(price * 1000) / 1000, shares: Math.round(buyShares * 100) / 100, amount: Math.round(buyCost * 100) / 100, fee: fee, note: '📥 交割单导入' });
-          state.prices[code] = price || state.prices[code] || 0;
+          const newCost = oldCost + totalCost;
+
+          fund.shares = round2(newShares);
+          fund.avgCost = round3(newCost / newShares);
+          state.cash = round2(state.cash - totalCost);
+
+          state.history.unshift({
+            id: Date.now(),
+            time: displayTime,
+            type: 'buy',
+            fundId: code,
+            price: round3(effectivePrice),
+            shares: round2(buyShares),
+            amount: buyAmount,
+            fee: fee,
+            note: '📥 交割单导入'
+          });
+          state.prices[code] = round3(effectivePrice || state.prices[code] || 0);
+
         } else if (tradeType === 'sell') {
           const sellShares = Math.abs(shares);
-          if (sellShares > fund.shares + 0.01) { skipCount++; errors.push('第' + (i+1) + '行：卖出份额超过持仓 (' + code + ')'); continue; }
-          fund.shares = Math.round((fund.shares - sellShares) * 100) / 100;
-          if (fund.shares < 0.001) { fund.shares = 0; fund.avgCost = 0; }
-          state.cash += cashChange;
-          safeAddHistory({ id: Date.now(), time: displayTime, type: 'sell', fundId: code, price: Math.round(price * 1000) / 1000, shares: Math.round(sellShares * 100) / 100, amount: Math.round((amount !== 0 ? Math.abs(amount) : (sellShares * price)) * 100) / 100, fee: fee, note: '📥 交割单导入' });
-          state.prices[code] = price || state.prices[code] || 0;
-        } else {
-          const dividendAmount = Math.abs(amount) || (shares * price);
-          state.cash += dividendAmount;
+          if (sellShares > fund.shares + 0.01) {
+            skipCount++;
+            errors.push('第' + (i+1) + '行：卖出份额超过持仓 (' + code + ')');
+            continue;
+          }
+          const effectivePrice = amount !== 0 && sellShares > 0 ? Math.abs(amount) / sellShares : price;
+          const sellAmount = round2(sellShares * effectivePrice);
+          const netAmount = sellAmount - fee;
+
+          fund.shares = round2(fund.shares - sellShares);
+          if (fund.shares < 0.001) {
+            fund.shares = 0;
+            fund.avgCost = 0;
+          }
+          state.cash = round2(state.cash + netAmount);
+
+          state.history.unshift({
+            id: Date.now(),
+            time: displayTime,
+            type: 'sell',
+            fundId: code,
+            price: round3(effectivePrice),
+            shares: round2(sellShares),
+            amount: sellAmount,
+            fee: fee,
+            note: '📥 交割单导入'
+          });
+          state.prices[code] = round3(effectivePrice || state.prices[code] || 0);
+
+        } else if (tradeType === 'dividend') {
+          const dividendAmount = round2(Math.abs(amount) || (shares * price));
+          state.cash = round2(state.cash + dividendAmount);
           const did = Date.now();
-          state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: Math.round(dividendAmount * 100) / 100 });
-          safeAddHistory({ id: Date.now(), time: displayTime, type: 'dividend', fundId: code, price: 0, shares: 0, amount: Math.round(dividendAmount * 100) / 100, note: '📥 交割单导入', dividendId: did });
+          state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: dividendAmount });
+          state.history.unshift({
+            id: Date.now(),
+            time: displayTime,
+            type: 'dividend',
+            fundId: code,
+            price: 0,
+            shares: 0,
+            amount: dividendAmount,
+            note: '📥 交割单导入',
+            dividendId: did
+          });
         }
+
         successCount++;
       }
+
       save();
       renderAll();
       refreshFundSelects();
+
       let resultMsg = '✅ 导入完成！\n\n成功导入 ' + successCount + ' 笔交易。';
-      if (skipCount > 0) resultMsg += '\n跳过 ' + skipCount + ' 行：\n' + errors.slice(0, 5).join('\n') + (errors.length > 5 ? '\n...' : '');
+      if (skipCount > 0) {
+        resultMsg += '\n跳过 ' + skipCount + ' 行：\n' + errors.slice(0, 5).join('\n') + (errors.length > 5 ? '\n...' : '');
+      }
       alert(resultMsg);
-    } catch (err) { console.error(err); alert('❌ 解析文件失败：' + err.message); }
+
+    } catch (err) {
+      console.error(err);
+      alert('❌ 解析文件失败：' + err.message);
+    }
   };
-  if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt')) reader.readAsText(file);
-  else reader.readAsArrayBuffer(file);
+
+  if (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.txt')) {
+    reader.readAsText(file);
+  } else {
+    reader.readAsArrayBuffer(file);
+  }
 }
 
 document.getElementById('statementFile').addEventListener('change', function(e) {
   const file = e.target.files[0];
   if (!file) return;
-  if (!confirm('即将导入交割单文件「' + file.name + '」，导入后将自动更新持仓、现金和历史记录。\n确认继续吗？')) { e.target.value = ''; return; }
+  if (!confirm('即将导入交割单文件「' + file.name + '」，导入后将自动更新持仓、现金和历史记录。\n确认继续吗？')) {
+    e.target.value = '';
+    return;
+  }
   parseStatementFile(file);
   e.target.value = '';
 });
 
+// ---------- 基金参数管理 ----------
 function saveFundSettings() {
   const nameInputs = document.querySelectorAll('.fund-name-input');
   for (let i = 0; i < nameInputs.length; i++) {
@@ -1427,18 +1636,21 @@ function saveFundSettings() {
     const id = input.dataset.id;
     if (state.funds[id]) state.funds[id].name = input.value.trim() || state.funds[id].name;
   }
+
   const divInputs = document.querySelectorAll('.fund-div-input');
   for (let i = 0; i < divInputs.length; i++) {
     const input = divInputs[i];
     const id = input.dataset.id;
     if (state.funds[id]) state.funds[id].annualDividend = parseFloat(input.value) || 0;
   }
+
   const linkInputs = document.querySelectorAll('.fund-link-input');
   for (let i = 0; i < linkInputs.length; i++) {
     const input = linkInputs[i];
     const id = input.dataset.id;
     if (state.funds[id]) state.funds[id].link = input.value.trim();
   }
+
   save();
   renderAll();
   refreshFundSelects();
@@ -1451,19 +1663,24 @@ function addFund() {
   const div = parseFloat(document.getElementById('newFundDiv').value) || 0;
   const price = parseFloat(document.getElementById('newFundPrice').value) || 0;
   const link = document.getElementById('newFundLink').value.trim();
+
   if (!/^\d{6}$/.test(code)) { alert('请输入6位数字基金代码'); return; }
   if (!name) { alert('请输入基金名称'); return; }
   if (state.funds[code]) { alert('该基金代码已存在'); return; }
+
   state.funds[code] = { id: code, name: name, shares: 0, avgCost: 0, annualDividend: div, link: link };
   state.prices[code] = price || 0;
+
   save();
   renderAll();
   refreshFundSelects();
+
   document.getElementById('newFundCode').value = '';
   document.getElementById('newFundName').value = '';
   document.getElementById('newFundDiv').value = '';
   document.getElementById('newFundPrice').value = '';
   document.getElementById('newFundLink').value = '';
+
   alert('✅ 基金 ' + name + '（' + code + '）已添加！');
 }
 
@@ -1471,26 +1688,29 @@ function deleteFund(id) {
   const fund = state.funds[id];
   if (!fund) return;
   if (!confirm('⚠️ 确定删除基金 ' + fund.name + '（' + id + '）吗？\n\n该基金的所有持仓、交易和分红记录将被删除！')) return;
+
   delete state.funds[id];
   delete state.prices[id];
-  const newHistory = [];
-  for (let i = 0; i < state.history.length; i++) if (state.history[i].fundId !== id) newHistory.push(state.history[i]);
-  state.history = newHistory;
-  const newDividends = [];
-  for (let i = 0; i < state.dividends.length; i++) if (state.dividends[i].fundId !== id) newDividends.push(state.dividends[i]);
-  state.dividends = newDividends;
+
+  state.history = state.history.filter(function(h) { return h.fundId !== id; });
+  state.dividends = state.dividends.filter(function(d) { return d.fundId !== id; });
+
   save();
   renderAll();
   refreshFundSelects();
   alert('🗑️ 基金 ' + fund.name + ' 已删除。');
 }
 
+// ---------- 基金下拉刷新 ----------
 function refreshFundSelects() {
   let options = '';
-  for (const id in state.funds) options += '<option value="' + id + '">' + fundLabel(id) + '</option>';
+  for (const id in state.funds) {
+    options += '<option value="' + esc(id) + '">' + esc(fundLabel(id)) + '</option>';
+  }
   document.getElementById('buyFund').innerHTML = options;
   document.getElementById('sellFund').innerHTML = options;
   document.getElementById('divFund').innerHTML = options;
+
   const buyId = document.getElementById('buyFund').value;
   const sellId = document.getElementById('sellFund').value;
   document.getElementById('buyPrice').value = state.prices[buyId] || 0;
@@ -1498,17 +1718,21 @@ function refreshFundSelects() {
   document.getElementById('sellAmount').textContent = '¥0.00';
 }
 
+// ---------- 基金详情模态框 ----------
 function openFundDetail(id) {
   const fund = state.funds[id];
   if (!fund) { alert('该基金已不存在'); return; }
+
   const modal = document.getElementById('fundModal');
   document.getElementById('modalFundTitle').textContent = fundLabel(id);
+
   const price = state.prices[id] || 0;
   const marketValue = (fund.shares || 0) * price;
   const profit = fund.avgCost ? (price - fund.avgCost) * (fund.shares || 0) : 0;
   const stats = computeFundStats(id);
   const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
   const staticYield = price > 0 ? (fund.annualDividend / price * 100) : 0;
+
   const html = '<div class="modal-info-grid">' +
     '<div class="modal-info-item"><div class="label">当前价</div><div class="value">' + fmtPrice(price) + '</div></div>' +
     '<div class="modal-info-item"><div class="label">持有份额</div><div class="value">' + fmtNumber(fund.shares) + '</div></div>' +
@@ -1520,24 +1744,26 @@ function openFundDetail(id) {
     '<div class="modal-info-item"><div class="label">静态股息率</div><div class="value">' + staticYield.toFixed(2) + '%</div></div>' +
     '</div>';
   document.getElementById('modalFundInfo').innerHTML = html;
-  const linkHtml = fund.link ? '<a class="modal-link" href="' + fund.link + '" target="_blank">🔗 查看外部基金主页</a>' : '';
+
+  const linkHtml = fund.link ? '<a class="modal-link" href="' + esc(fund.link) + '" target="_blank">🔗 查看外部基金主页</a>' : '';
   document.getElementById('modalExternalLink').innerHTML = linkHtml;
-  const historyItems = [];
-  for (let i = 0; i < state.history.length; i++) if (state.history[i].fundId === id) historyItems.push(state.history[i]);
+
+  const historyItems = state.history.filter(function(h) { return h.fundId === id; });
   let histHtml = '';
-  if (!historyItems.length) histHtml = '<tr><td colspan="6"><div class="empty">该基金暂无交易记录</div></td></tr>';
-  else {
+  if (!historyItems.length) {
+    histHtml = '<tr><td colspan="6"><div class="empty">该基金暂无交易记录</div></td></tr>';
+  } else {
     const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'], tax: ['税补缴', 'tag-tax'], fee: ['组合费', 'tag-fee'] };
     for (let i = 0; i < historyItems.length; i++) {
       const h = historyItems[i];
       const tInfo = typeMap[h.type] || [h.type, ''];
       histHtml += '<tr>';
-      histHtml += '<td style="white-space:nowrap;">' + formatHistoryTime(h.time) + '</td>';
+      histHtml += '<td style="white-space:nowrap;">' + esc(formatHistoryTime(h.time)) + '</td>';
       histHtml += '<td><span class="tag ' + tInfo[1] + '">' + tInfo[0] + '</span></td>';
       histHtml += '<td>' + (h.price ? fmtPrice(h.price) : '—') + '</td>';
       histHtml += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
       histHtml += '<td>' + (h.amount ? fmtMoney(h.amount) : '—') + '</td>';
-      histHtml += '<td class="note-cell">' + (h.note ? h.note : '—') + '</td>';
+      histHtml += '<td class="note-cell">' + (h.note ? esc(h.note) : '—') + '</td>';
       histHtml += '</tr>';
     }
   }
@@ -1545,11 +1771,15 @@ function openFundDetail(id) {
   modal.style.display = 'flex';
 }
 
-function closeFundDetail() { document.getElementById('fundModal').style.display = 'none'; }
+function closeFundDetail() {
+  document.getElementById('fundModal').style.display = 'none';
+}
 
+// ---------- 重置数据 ----------
 function resetData() {
   if (!confirm('⚠️ 确定清空所有数据吗？所有持仓、交易和分红记录将被清空！')) return;
   if (!confirm('⚠️ 再次确认：此操作不可撤销！')) return;
+
   state = createDefaultState();
   save();
   renderAll();
@@ -1557,10 +1787,12 @@ function resetData() {
   alert('🔄 已清空所有数据，现金余额为 0，请重新导入交割单或手动录入。');
 }
 
+// ---------- 初始化 ----------
 function initTradeForms() {
   refreshFundSelects();
   document.getElementById('buyDate').value = getLocalDate();
   document.getElementById('sellDate').value = getLocalDate();
+
   function syncPrice(selectId, priceId) {
     document.getElementById(selectId).addEventListener('change', function() {
       const id = this.value;
@@ -1569,13 +1801,15 @@ function initTradeForms() {
   }
   syncPrice('buyFund', 'buyPrice');
   syncPrice('sellFund', 'sellPrice');
+
   function calcSellAmount() {
     const shares = parseFloat(document.getElementById('sellShares').value) || 0;
     const price = parseFloat(document.getElementById('sellPrice').value) || 0;
-    document.getElementById('sellAmount').textContent = fmtMoney(shares * price);
+    document.getElementById('sellAmount').textContent = fmtMoney(round2(shares * price));
   }
   document.getElementById('sellShares').addEventListener('input', calcSellAmount);
   document.getElementById('sellPrice').addEventListener('input', calcSellAmount);
+
   document.getElementById('btnSellAll').addEventListener('click', function() {
     const fundId = document.getElementById('sellFund').value;
     const fund = state.funds[fundId];
@@ -1583,6 +1817,7 @@ function initTradeForms() {
     document.getElementById('sellShares').value = fund.shares.toFixed(2);
     calcSellAmount();
   });
+
   document.getElementById('buyForm').addEventListener('submit', function(e) {
     e.preventDefault();
     const fundId = document.getElementById('buyFund').value;
@@ -1597,6 +1832,7 @@ function initTradeForms() {
     document.getElementById('buyAmount').value = '';
     document.getElementById('buyNote').value = '';
   });
+
   document.getElementById('sellForm').addEventListener('submit', function(e) {
     e.preventDefault();
     const fundId = document.getElementById('sellFund').value;
@@ -1612,6 +1848,7 @@ function initTradeForms() {
     document.getElementById('sellAmount').textContent = '¥0.00';
     document.getElementById('sellNote').value = '';
   });
+
   document.getElementById('dividendForm').addEventListener('submit', function(e) {
     e.preventDefault();
     const fundId = document.getElementById('divFund').value;
@@ -1627,15 +1864,20 @@ function initTradeForms() {
 function init() {
   loadState();
   document.getElementById('divDate').value = getLocalDate();
+
   const segments = document.querySelectorAll('.segment');
   for (let i = 0; i < segments.length; i++) {
     segments[i].addEventListener('click', function() { switchTab(this.dataset.tab); });
   }
+
   initTradeForms();
   renderAll();
   save();
 }
+
 init();
+
+})();
 </script>
 </body>
 </html>
