@@ -403,6 +403,7 @@ tr:hover td { background: #F9F9FB; }
     </div>
     <nav class="segmented">
       <button class="segment active" data-tab="account">📊 账户</button>
+      <button class="segment" data-tab="index">🌡 指数</button>
       <button class="segment" data-tab="trade">🔄 买卖</button>
       <button class="segment" data-tab="dividend">🧧 分红</button>
       <button class="segment" data-tab="notes">📝 笔记</button>
@@ -470,6 +471,39 @@ tr:hover td { background: #F9F9FB; }
             <tr><th>基金</th><th>现价</th><th>累计分红</th><th>最终收益</th><th>操作</th></tr>
           </thead>
           <tbody id="closedTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 指数估值 -->
+  <div id="tab-index" class="tab-content">
+    <div class="card">
+      <div class="card-title">🌡 创业板指 / 中证红利 指数比值</div>
+      <div class="form-inline">
+        <div class="form-group">
+          <label>创业板指（399006）</label>
+          <input type="number" id="indexGem" step="0.01" min="0" placeholder="如 2300.00">
+        </div>
+        <div class="form-group">
+          <label>中证红利（000922）</label>
+          <input type="number" id="indexHong" step="0.01" min="0" placeholder="如 4500.00">
+        </div>
+      </div>
+      <div style="background:#F9F9FB; padding:24px; border-radius:16px; text-align:center; margin-top:16px;">
+        <div style="font-size:14px; color:var(--text2); margin-bottom:8px;">当前比值（创业板指 ÷ 中证红利）</div>
+        <div id="indexRatioDisplay" style="font-size:48px; font-weight:800; letter-spacing:-0.03em;">—</div>
+        <div id="indexStatusBadge" style="display:inline-block; margin-top:12px; padding:8px 24px; border-radius:100px; font-size:16px; font-weight:700;"></div>
+      </div>
+      <div style="margin-top:16px;">
+        <div id="indexAdvice" class="estimate" style="text-align:center; font-size:16px; padding:16px;">请输入指数点位后查看建议</div>
+      </div>
+      <div class="table-wrap" style="margin-top:16px;">
+        <table>
+          <thead>
+            <tr><th>比值区间</th><th>估值状态</th><th>建议仓位</th></tr>
+          </thead>
+          <tbody id="indexRuleTableBody"></tbody>
         </table>
       </div>
     </div>
@@ -739,7 +773,8 @@ function createDefaultState() {
     prices: Object.assign({}, DEFAULT_PRICES),
     history: [],
     dividends: [],
-    notes: []
+    notes: [],
+    indexPoints: { gem: 0, hong: 0 }
   };
 }
 
@@ -791,7 +826,8 @@ function loadState() {
           prices: Object.assign({}, DEFAULT_PRICES, p.prices || {}),
           history: Array.isArray(p.history) ? p.history : [],
           dividends: Array.isArray(p.dividends) ? p.dividends : [],
-          notes: Array.isArray(p.notes) ? p.notes : []
+          notes: Array.isArray(p.notes) ? p.notes : [],
+          indexPoints: Object.assign({ gem: 0, hong: 0 }, p.indexPoints || {})
         };
         save();
         return;
@@ -1158,7 +1194,6 @@ function renderNotes() {
     tbody.innerHTML = '<tr><td colspan="4"><div class="empty">暂无笔记，记录第一条心得吧 📝</div></td></tr>';
     return;
   }
-  // 按日期倒序（最新在前），同日期按创建时间倒序
   const sorted = state.notes.slice().sort(function(a, b) {
     if (a.date === b.date) return (b.createdAt || 0) - (a.createdAt || 0);
     return a.date < b.date ? 1 : -1;
@@ -1171,6 +1206,57 @@ function renderNotes() {
     html += '<td style="font-weight:600;">' + esc(n.title) + '</td>';
     html += '<td class="note-cell" style="max-width:400px;">' + esc(n.content) + '</td>';
     html += '<td><button class="btn btn-danger btn-sm" onclick="deleteNote(' + n.id + ')">删除</button></td>';
+    html += '</tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function renderIndex() {
+  const gem = parseFloat(state.indexPoints.gem) || 0;
+  const hong = parseFloat(state.indexPoints.hong) || 0;
+  const ratioEl = document.getElementById('indexRatioDisplay');
+  const statusEl = document.getElementById('indexStatusBadge');
+  const adviceEl = document.getElementById('indexAdvice');
+  const tbody = document.getElementById('indexRuleTableBody');
+
+  const rules = [
+    { range: '≤ 0.35', status: '极度低估', advice: '创业板80%红利20%', bg: '#FF3B30', color: '#fff' },
+    { range: '0.35 ~ 0.45', status: '低估', advice: '创业板65%红利35%', bg: '#FF9500', color: '#fff' },
+    { range: '0.45 ~ 0.55', status: '均衡（不动）', advice: '维持不动', bg: '#FFCC00', color: '#1D1D1F' },
+    { range: '0.55 ~ 0.65', status: '高估', advice: '红利65%创业板35%', bg: '#FF9500', color: '#fff' },
+    { range: '≥ 0.65', status: '极度高估', advice: '红利80%创业板20%', bg: '#FF3B30', color: '#fff' }
+  ];
+
+  let currentIndex = -1;
+  if (gem > 0 && hong > 0) {
+    const ratio = gem / hong;
+    ratioEl.textContent = ratio.toFixed(3);
+    if (ratio <= 0.35) currentIndex = 0;
+    else if (ratio <= 0.45) currentIndex = 1;
+    else if (ratio <= 0.55) currentIndex = 2;
+    else if (ratio <= 0.65) currentIndex = 3;
+    else currentIndex = 4;
+
+    const r = rules[currentIndex];
+    statusEl.textContent = r.status;
+    statusEl.style.background = r.bg;
+    statusEl.style.color = r.color;
+    adviceEl.innerHTML = '📌 建议仓位：<strong>' + esc(r.advice) + '</strong>';
+  } else {
+    ratioEl.textContent = '—';
+    statusEl.textContent = '';
+    statusEl.style.background = 'transparent';
+    statusEl.style.color = '';
+    adviceEl.textContent = '请输入两个指数点位后查看建议';
+  }
+
+  let html = '';
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i];
+    html += '<tr' + (i === currentIndex ? ' style="background:' + r.bg + ';color:' + r.color + ';font-weight:700;"' : '') + '>';
+    html += '<td>' + r.range + '</td>';
+    html += '<td>' + r.status + '</td>';
+    html += '<td>' + r.advice + '</td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
@@ -1198,6 +1284,7 @@ function renderAll() {
   renderDividend();
   renderHistory();
   renderNotes();
+  renderIndex();
   renderSettings();
 }
 
@@ -1214,6 +1301,7 @@ function switchTab(tab) {
   if (tab === 'dividend') renderDividend();
   if (tab === 'history') renderHistory();
   if (tab === 'notes') renderNotes();
+  if (tab === 'index') renderIndex();
   if (tab === 'settings') renderSettings();
 }
 
@@ -1353,6 +1441,15 @@ function goToSell(fundId) {
   document.getElementById('sellShares').focus();
 }
 
+function updateIndex() {
+  const gem = parseFloat(document.getElementById('indexGem').value) || 0;
+  const hong = parseFloat(document.getElementById('indexHong').value) || 0;
+  state.indexPoints.gem = gem;
+  state.indexPoints.hong = hong;
+  save();
+  renderIndex();
+}
+
 function exportJSON() {
   const data = JSON.stringify(Object.assign({}, state, { exportedAt: new Date().toISOString() }), null, 2);
   const date = new Date().toISOString().split('T')[0];
@@ -1425,7 +1522,8 @@ document.getElementById('importFile').addEventListener('change', function(e) {
         prices: Object.assign({}, DEFAULT_PRICES, data.prices || {}),
         history: Array.isArray(data.history) ? data.history : [],
         dividends: Array.isArray(data.dividends) ? data.dividends : [],
-        notes: Array.isArray(data.notes) ? data.notes : []
+        notes: Array.isArray(data.notes) ? data.notes : [],
+        indexPoints: Object.assign({ gem: 0, hong: 0 }, data.indexPoints || {})
       };
       save();
       renderAll();
@@ -1847,7 +1945,6 @@ function closeFundDetail() {
   document.getElementById('fundModal').style.display = 'none';
 }
 
-// ---------- 笔记相关 ----------
 function addNote() {
   const date = document.getElementById('noteDate').value;
   const title = document.getElementById('noteTitle').value.trim();
@@ -1892,6 +1989,11 @@ function initTradeForms() {
   document.getElementById('buyDate').value = getLocalDate();
   document.getElementById('sellDate').value = getLocalDate();
   document.getElementById('noteDate').value = getLocalDate();
+
+  document.getElementById('indexGem').value = state.indexPoints.gem || '';
+  document.getElementById('indexHong').value = state.indexPoints.hong || '';
+  document.getElementById('indexGem').addEventListener('input', updateIndex);
+  document.getElementById('indexHong').addEventListener('input', updateIndex);
 
   function syncPrice(selectId, priceId) {
     document.getElementById(selectId).addEventListener('change', function() {
@@ -1999,6 +2101,7 @@ window.deleteFund = deleteFund;
 window.goToSell = goToSell;
 window.deleteDividend = deleteDividend;
 window.deleteNote = deleteNote;
+window.updateIndex = updateIndex;
 
 })();
 </script>
