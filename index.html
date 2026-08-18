@@ -405,6 +405,7 @@ tr:hover td { background: #F9F9FB; }
       <button class="segment active" data-tab="account">📊 账户</button>
       <button class="segment" data-tab="trade">🔄 买卖</button>
       <button class="segment" data-tab="dividend">🧧 分红</button>
+      <button class="segment" data-tab="notes">📝 笔记</button>
       <button class="segment" data-tab="history">📜 历史</button>
       <button class="segment" data-tab="settings">⚙️ 设置</button>
     </nav>
@@ -572,6 +573,41 @@ tr:hover td { background: #F9F9FB; }
     </div>
   </div>
 
+  <!-- 笔记 -->
+  <div id="tab-notes" class="tab-content">
+    <div class="card">
+      <div class="card-title">📝 添加心得笔记</div>
+      <form id="noteForm">
+        <div class="form-inline">
+          <div class="form-group">
+            <label>日期</label>
+            <input type="date" id="noteDate" required>
+          </div>
+          <div class="form-group">
+            <label>标题</label>
+            <input type="text" id="noteTitle" placeholder="例如：今日操作复盘" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>心得内容</label>
+          <textarea id="noteContent" placeholder="记录你的投资心得、买入理由、市场观察……" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary">保存笔记</button>
+      </form>
+    </div>
+    <div class="card">
+      <div class="card-title">📚 全部笔记 <span style="font-size:13px;color:var(--text2);font-weight:400;">（按日期倒序）</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>日期</th><th>标题</th><th>内容</th><th>操作</th></tr>
+          </thead>
+          <tbody id="notesTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- 历史 -->
   <div id="tab-history" class="tab-content">
     <div class="card">
@@ -650,7 +686,7 @@ tr:hover td { background: #F9F9FB; }
     <div class="card danger-zone">
       <div class="card-title">⚠️ 危险操作</div>
       <button class="btn btn-danger" onclick="resetData()">🔄 清空所有数据</button>
-      <p class="hint">清空所有持仓、交易和分红记录，现金余额归零，便于重新开始。</p>
+      <p class="hint">清空所有持仓、交易、分红和笔记记录，现金余额归零，便于重新开始。</p>
     </div>
   </div>
 </div>
@@ -702,7 +738,8 @@ function createDefaultState() {
     funds: JSON.parse(JSON.stringify(DEFAULT_FUNDS)),
     prices: Object.assign({}, DEFAULT_PRICES),
     history: [],
-    dividends: []
+    dividends: [],
+    notes: []
   };
 }
 
@@ -753,7 +790,8 @@ function loadState() {
           funds: mergeFunds(p.funds),
           prices: Object.assign({}, DEFAULT_PRICES, p.prices || {}),
           history: Array.isArray(p.history) ? p.history : [],
-          dividends: Array.isArray(p.dividends) ? p.dividends : []
+          dividends: Array.isArray(p.dividends) ? p.dividends : [],
+          notes: Array.isArray(p.notes) ? p.notes : []
         };
         save();
         return;
@@ -1114,6 +1152,30 @@ function renderHistory() {
   tbody.innerHTML = html;
 }
 
+function renderNotes() {
+  const tbody = document.getElementById('notesTableBody');
+  if (!state.notes.length) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty">暂无笔记，记录第一条心得吧 📝</div></td></tr>';
+    return;
+  }
+  // 按日期倒序（最新在前），同日期按创建时间倒序
+  const sorted = state.notes.slice().sort(function(a, b) {
+    if (a.date === b.date) return (b.createdAt || 0) - (a.createdAt || 0);
+    return a.date < b.date ? 1 : -1;
+  });
+  let html = '';
+  for (let i = 0; i < sorted.length; i++) {
+    const n = sorted[i];
+    html += '<tr>';
+    html += '<td style="white-space:nowrap;">' + esc(n.date) + '</td>';
+    html += '<td style="font-weight:600;">' + esc(n.title) + '</td>';
+    html += '<td class="note-cell" style="max-width:400px;">' + esc(n.content) + '</td>';
+    html += '<td><button class="btn btn-danger btn-sm" onclick="deleteNote(' + n.id + ')">删除</button></td>';
+    html += '</tr>';
+  }
+  tbody.innerHTML = html;
+}
+
 function renderSettings() {
   const tbody = document.getElementById('fundSettingsTable');
   let html = '';
@@ -1135,6 +1197,7 @@ function renderAll() {
   renderAccount();
   renderDividend();
   renderHistory();
+  renderNotes();
   renderSettings();
 }
 
@@ -1150,6 +1213,7 @@ function switchTab(tab) {
   if (tab === 'account') renderAccount();
   if (tab === 'dividend') renderDividend();
   if (tab === 'history') renderHistory();
+  if (tab === 'notes') renderNotes();
   if (tab === 'settings') renderSettings();
 }
 
@@ -1360,7 +1424,8 @@ document.getElementById('importFile').addEventListener('change', function(e) {
         funds: mergeFunds(data.funds),
         prices: Object.assign({}, DEFAULT_PRICES, data.prices || {}),
         history: Array.isArray(data.history) ? data.history : [],
-        dividends: Array.isArray(data.dividends) ? data.dividends : []
+        dividends: Array.isArray(data.dividends) ? data.dividends : [],
+        notes: Array.isArray(data.notes) ? data.notes : []
       };
       save();
       renderAll();
@@ -1782,8 +1847,37 @@ function closeFundDetail() {
   document.getElementById('fundModal').style.display = 'none';
 }
 
+// ---------- 笔记相关 ----------
+function addNote() {
+  const date = document.getElementById('noteDate').value;
+  const title = document.getElementById('noteTitle').value.trim();
+  const content = document.getElementById('noteContent').value.trim();
+  if (!date || !title || !content) { alert('日期、标题、心得内容均不能为空'); return; }
+
+  state.notes.push({
+    id: Date.now(),
+    date: date,
+    title: title,
+    content: content,
+    createdAt: Date.now()
+  });
+
+  save();
+  renderNotes();
+  document.getElementById('noteTitle').value = '';
+  document.getElementById('noteContent').value = '';
+  alert('📝 笔记已保存！');
+}
+
+function deleteNote(id) {
+  if (!confirm('确定删除这条笔记吗？')) return;
+  state.notes = state.notes.filter(function(n) { return n.id !== id; });
+  save();
+  renderNotes();
+}
+
 function resetData() {
-  if (!confirm('⚠️ 确定清空所有数据吗？所有持仓、交易和分红记录将被清空！')) return;
+  if (!confirm('⚠️ 确定清空所有数据吗？所有持仓、交易、分红和笔记记录将被清空！')) return;
   if (!confirm('⚠️ 再次确认：此操作不可撤销！')) return;
 
   state = createDefaultState();
@@ -1797,6 +1891,7 @@ function initTradeForms() {
   refreshFundSelects();
   document.getElementById('buyDate').value = getLocalDate();
   document.getElementById('sellDate').value = getLocalDate();
+  document.getElementById('noteDate').value = getLocalDate();
 
   function syncPrice(selectId, priceId) {
     document.getElementById(selectId).addEventListener('change', function() {
@@ -1864,11 +1959,17 @@ function initTradeForms() {
     addDividend(fundId, date, amount);
     document.getElementById('divAmount').value = '';
   });
+
+  document.getElementById('noteForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    addNote();
+  });
 }
 
 function init() {
   loadState();
   document.getElementById('divDate').value = getLocalDate();
+  document.getElementById('noteDate').value = getLocalDate();
 
   const segments = document.querySelectorAll('.segment');
   for (let i = 0; i < segments.length; i++) {
@@ -1882,7 +1983,7 @@ function init() {
 
 init();
 
-// ================= 关键修复：将内联事件所需的函数挂载到全局 =================
+// ================= 将所有内联事件所需的函数挂载到全局 =================
 window.toggleEdit = toggleEdit;
 window.saveEdit = saveEdit;
 window.cancelEdit = cancelEdit;
@@ -1897,7 +1998,7 @@ window.addFund = addFund;
 window.deleteFund = deleteFund;
 window.goToSell = goToSell;
 window.deleteDividend = deleteDividend;
-// ========================================================================
+window.deleteNote = deleteNote;
 
 })();
 </script>
