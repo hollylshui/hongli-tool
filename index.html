@@ -683,7 +683,6 @@ tr:hover td { background: #F9F9FB; }
 const STORAGE_KEY = 'hongliProState';
 const LEGACY_KEYS = ['hongliTool', 'hongli_data', 'dividendTool', 'hongliPro'];
 
-// 默认基金的年分红已调整为“元/10份”
 const DEFAULT_FUNDS = {
   '510880': { id: '510880', name: '上证红利ETF', shares: 0, avgCost: 0, annualDividend: 3.00, link: 'https://fund.eastmoney.com/510880.html' },
   '515180': { id: '515180', name: '中证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.80, link: 'https://fund.eastmoney.com/515180.html' },
@@ -795,7 +794,6 @@ function loadState() {
   save();
 }
 
-// ---------- 格式化与转义 ----------
 function esc(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -862,7 +860,6 @@ function getLocalDate() {
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
 }
 
-// ---------- 文件下载 ----------
 function saveFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime + ';charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -886,7 +883,6 @@ function downloadCSV(filename, headers, rows) {
   saveFile(filename, BOM + content, 'text/csv');
 }
 
-// ---------- 统计核心 ----------
 function fundHasHistory(id) {
   return state.history.some(function(h) { return h.fundId === id; });
 }
@@ -930,7 +926,6 @@ function computeFundStats(id) {
   return { shares, avgCost, realizedPNL, totalDividend };
 }
 
-// ---------- 编辑总资产/现金 ----------
 function toggleEdit(field) {
   const box = document.getElementById('editBox-' + field);
   const display = document.getElementById(field + 'Display');
@@ -973,7 +968,6 @@ function cancelEdit(field) {
   display.style.opacity = 1;
 }
 
-// ---------- 渲染 ----------
 function renderAccount() {
   const totalAsset = getTotalAsset();
   const stockVal = getStockValue();
@@ -1017,7 +1011,6 @@ function renderAccount() {
     const floatProfit = (price - f.avgCost) * shares;
     const profitRate = f.avgCost && shares ? (floatProfit / (f.avgCost * shares) * 100) : 0;
     const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
-    // 成本股息率：年分红（元/10份）÷10 ÷ 成本价 × 100%
     const costYield = f.avgCost > 0 ? ((f.annualDividend / 10) / f.avgCost * 100) : 0;
     totalFloatProfit += floatProfit;
 
@@ -1160,7 +1153,6 @@ function switchTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
-// ---------- 交易操作 ----------
 function buy(fundId, price, amount, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
@@ -1276,7 +1268,6 @@ function deleteDividend(id) {
   alert(isTax ? '已删除税补缴记录，现金已退回。' : '已删除分红，现金已相应扣除。');
 }
 
-// ---------- 价格修改 ----------
 document.addEventListener('change', function(e) {
   if (e.target.classList && e.target.classList.contains('price-input')) {
     const id = e.target.dataset.id;
@@ -1289,7 +1280,6 @@ document.addEventListener('change', function(e) {
   }
 });
 
-// ---------- 跳转卖出 ----------
 function goToSell(fundId) {
   switchTab('trade');
   document.getElementById('sellFund').value = fundId;
@@ -1299,7 +1289,6 @@ function goToSell(fundId) {
   document.getElementById('sellShares').focus();
 }
 
-// ---------- 导出 ----------
 function exportJSON() {
   const data = JSON.stringify(Object.assign({}, state, { exportedAt: new Date().toISOString() }), null, 2);
   const date = new Date().toISOString().split('T')[0];
@@ -1348,7 +1337,6 @@ function exportHistoryCSV() {
   alert('✅ 交易流水CSV已导出！');
 }
 
-// ---------- 导入 JSON ----------
 document.getElementById('importFile').addEventListener('change', function(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -1386,7 +1374,6 @@ document.getElementById('importFile').addEventListener('change', function(e) {
   e.target.value = '';
 });
 
-// ---------- 交割单导入 ----------
 function findColumn(keys, candidates) {
   for (let i = 0; i < candidates.length; i++) {
     for (let j = 0; j < keys.length; j++) {
@@ -1649,7 +1636,6 @@ document.getElementById('statementFile').addEventListener('change', function(e) 
   e.target.value = '';
 });
 
-// ---------- 基金参数管理 ----------
 function saveFundSettings() {
   const nameInputs = document.querySelectorAll('.fund-name-input');
   for (let i = 0; i < nameInputs.length; i++) {
@@ -1722,7 +1708,6 @@ function deleteFund(id) {
   alert('🗑️ 基金 ' + fund.name + ' 已删除。');
 }
 
-// ---------- 基金下拉刷新 ----------
 function refreshFundSelects() {
   let options = '';
   for (const id in state.funds) {
@@ -1739,7 +1724,6 @@ function refreshFundSelects() {
   document.getElementById('sellAmount').textContent = '¥0.00';
 }
 
-// ---------- 基金详情模态框 ----------
 function openFundDetail(id) {
   const fund = state.funds[id];
   if (!fund) { alert('该基金已不存在'); return; }
@@ -1798,7 +1782,6 @@ function closeFundDetail() {
   document.getElementById('fundModal').style.display = 'none';
 }
 
-// ---------- 重置数据 ----------
 function resetData() {
   if (!confirm('⚠️ 确定清空所有数据吗？所有持仓、交易和分红记录将被清空！')) return;
   if (!confirm('⚠️ 再次确认：此操作不可撤销！')) return;
@@ -1810,7 +1793,6 @@ function resetData() {
   alert('🔄 已清空所有数据，现金余额为 0，请重新导入交割单或手动录入。');
 }
 
-// ---------- 初始化 ----------
 function initTradeForms() {
   refreshFundSelects();
   document.getElementById('buyDate').value = getLocalDate();
@@ -1899,6 +1881,23 @@ function init() {
 }
 
 init();
+
+// ================= 关键修复：将内联事件所需的函数挂载到全局 =================
+window.toggleEdit = toggleEdit;
+window.saveEdit = saveEdit;
+window.cancelEdit = cancelEdit;
+window.openFundDetail = openFundDetail;
+window.closeFundDetail = closeFundDetail;
+window.exportJSON = exportJSON;
+window.exportHoldingsCSV = exportHoldingsCSV;
+window.exportHistoryCSV = exportHistoryCSV;
+window.resetData = resetData;
+window.saveFundSettings = saveFundSettings;
+window.addFund = addFund;
+window.deleteFund = deleteFund;
+window.goToSell = goToSell;
+window.deleteDividend = deleteDividend;
+// ========================================================================
 
 })();
 </script>
