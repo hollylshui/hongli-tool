@@ -620,7 +620,11 @@ tr:hover td { background: var(--hover); }
             <label>买入份额</label>
             <input type="number" id="buyShares" step="0.01" min="0" placeholder="例如：100.00" required>
           </div>
-          <div class="estimate">预计花费：<strong id="buyAmountPreview">¥0.00</strong></div>
+          <div class="form-group">
+            <label>手续费（元）</label>
+            <input type="number" id="buyFee" step="0.01" min="0" value="0" placeholder="0.00">
+          </div>
+          <div class="estimate">预计花费（含手续费）：<strong id="buyAmountPreview">¥0.00</strong></div>
           <div class="form-group">
             <label>可用现金：<span id="buyCashHint" style="color:var(--text2);"></span></label>
           </div>
@@ -650,7 +654,11 @@ tr:hover td { background: var(--hover); }
             <label>卖出份额</label>
             <input type="number" id="sellShares" step="0.01" min="0" placeholder="输入份额" required>
           </div>
-          <div class="estimate">预计到账：<strong id="sellAmount">¥0.00</strong></div>
+          <div class="form-group">
+            <label>手续费（元）</label>
+            <input type="number" id="sellFee" step="0.01" min="0" value="0" placeholder="0.00">
+          </div>
+          <div class="estimate">预计到账（已扣手续费）：<strong id="sellAmount">¥0.00</strong></div>
           <div class="form-group">
             <label>交易心得（可选）</label>
             <textarea id="sellNote" placeholder="记录一下卖出原因、复盘思考……"></textarea>
@@ -739,7 +747,7 @@ tr:hover td { background: var(--hover); }
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>日期</th><th>类型</th><th>基金</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th><th>操作</th></tr>
+            <tr><th>日期</th><th>类型</th><th>基金</th><th>价格</th><th>份额</th><th>金额</th><th>手续费</th><th>心得</th><th>操作</th></tr>
           </thead>
           <tbody id="historyTableBody"></tbody>
         </table>
@@ -828,7 +836,7 @@ tr:hover td { background: var(--hover); }
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>日期</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>心得</th></tr>
+          <tr><th>日期</th><th>类型</th><th>价格</th><th>份额</th><th>金额</th><th>手续费</th><th>心得</th></tr>
         </thead>
         <tbody id="modalFundHistoryBody"></tbody>
       </table>
@@ -1093,7 +1101,6 @@ function computeFundStats(id) {
   return { shares, avgCost, realizedPNL, totalDividend };
 }
 
-// 根据现有历史记录重新计算某基金的持仓和成本（用于删除记录后还原）
 function rebuildFundFromHistory(fundId) {
   const stats = computeFundStats(fundId);
   if (state.funds[fundId]) {
@@ -1103,7 +1110,6 @@ function rebuildFundFromHistory(fundId) {
 }
 
 function deleteHistory(id) {
-  // 找到记录
   let idx = -1;
   for (let i = 0; i < state.history.length; i++) {
     if (state.history[i].id === id) { idx = i; break; }
@@ -1115,42 +1121,34 @@ function deleteHistory(id) {
 
   const confirmMsg = '⚠️ 确定删除这笔' + typeName + '记录吗？\n\n' +
     (h.time || '') + ' ' + (state.funds[h.fundId] ? state.funds[h.fundId].name : h.fundId) + '\n' +
-    '金额：' + (h.amount ? fmtMoney(h.amount) : '—') + '\n\n' +
+    '金额：' + (h.amount ? fmtMoney(h.amount) : '—') + '\n' +
+    '手续费：' + (h.fee ? fmtMoney(h.fee) : '—') + '\n\n' +
     '删除后持仓和现金将自动重新计算。';
 
   if (!confirm(confirmMsg)) return;
 
-  // 从历史中移除
   state.history.splice(idx, 1);
 
-  // 若为分红或税补缴，也要从分红列表移除
   if (h.type === 'dividend' || h.type === 'tax') {
     if (h.dividendId) {
       state.dividends = state.dividends.filter(function(d) { return d.id !== h.dividendId; });
     } else {
-      // 没有关联ID时，尝试匹配相同基金、时间、金额
       state.dividends = state.dividends.filter(function(d) {
         return !(d.fundId === h.fundId && d.time === h.time && d.amount === h.amount);
       });
     }
   }
 
-  // 调整现金
   if (h.type === 'buy') {
-    // 原买入流出现金，现在返还
     state.cash = round2(state.cash + (h.amount || 0) + (h.fee || 0));
   } else if (h.type === 'sell') {
-    // 原卖出现金收入，现在扣回
     state.cash = round2(state.cash - ((h.amount || 0) - (h.fee || 0)));
   } else if (h.type === 'dividend') {
-    // 原分红现金收入，现在扣回
     state.cash = round2(state.cash - (h.amount || 0));
   } else if (h.type === 'tax' || h.type === 'fee') {
-    // 原扣款，现在返还
     state.cash = round2(state.cash + (h.amount || 0));
   }
 
-  // 重新计算该基金持仓和成本
   rebuildFundFromHistory(h.fundId);
 
   save();
@@ -1399,7 +1397,7 @@ function renderDividend() {
 function renderHistory() {
   const tbody = document.getElementById('historyTableBody');
   if (!state.history.length) {
-    tbody.innerHTML = '<tr><td colspan="8"><div class="empty">暂无交易记录</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty">暂无交易记录</div></td></tr>';
     return;
   }
   const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'], tax: ['税补缴', 'tag-tax'], fee: ['组合费', 'tag-fee'] };
@@ -1420,6 +1418,7 @@ function renderHistory() {
     html += '<td>' + (h.price ? fmtPrice(h.price) : '—') + '</td>';
     html += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
     html += '<td>' + (h.amount ? fmtMoney(h.amount) : '—') + '</td>';
+    html += '<td>' + (h.fee ? fmtMoney(h.fee) : '—') + '</td>';
     html += '<td class="note-cell">' + (h.note ? esc(h.note) : '—') + '</td>';
     html += '<td><button class="btn btn-danger btn-sm" onclick="deleteHistory(' + h.id + ')">删除</button></td>';
     html += '</tr>';
@@ -1544,7 +1543,7 @@ function switchTab(tab) {
   if (tab === 'settings') renderSettings();
 }
 
-function buy(fundId, price, shares, note, date) {
+function buy(fundId, price, shares, fee, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
 
@@ -1554,13 +1553,16 @@ function buy(fundId, price, shares, note, date) {
   const amount = round2(buyShares * price);
   if (amount <= 0) { alert('计算金额为0，请检查价格'); return; }
 
-  if (amount > state.cash) { alert('现金不足！需要 ' + fmtMoney(amount) + '，当前现金：' + fmtMoney(state.cash)); return; }
+  const safeFee = round2(parseFloat(fee) || 0);
+  const totalCost = round2(amount + safeFee);
 
-  const totalCost = fund.avgCost * fund.shares + amount;
+  if (totalCost > state.cash) { alert('现金不足！需要 ' + fmtMoney(totalCost) + '（含手续费' + fmtMoney(safeFee) + '），当前现金：' + fmtMoney(state.cash)); return; }
+
+  const oldCost = fund.avgCost * fund.shares;
   fund.shares = round2(fund.shares + buyShares);
-  fund.avgCost = round3(totalCost / fund.shares);
+  fund.avgCost = round3((oldCost + totalCost) / fund.shares);
 
-  state.cash = round2(state.cash - amount);
+  state.cash = round2(state.cash - totalCost);
 
   state.history.unshift({
     id: Date.now(),
@@ -1570,27 +1572,30 @@ function buy(fundId, price, shares, note, date) {
     price: round3(price),
     shares: buyShares,
     amount: amount,
-    fee: 0,
+    fee: safeFee,
     note: note || ''
   });
 
   save();
   renderAll();
-  alert('✅ 买入成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(buyShares) + '\n总花费：' + fmtMoney(amount) + '\n剩余现金：' + fmtMoney(state.cash));
+  alert('✅ 买入成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(buyShares) + '\n成交金额：' + fmtMoney(amount) + '\n手续费：' + fmtMoney(safeFee) + '\n总花费：' + fmtMoney(totalCost) + '\n剩余现金：' + fmtMoney(state.cash));
 }
 
-function sell(fundId, price, shares, note, date) {
+function sell(fundId, price, shares, fee, note, date) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
   if (shares > fund.shares) { alert('份额不足！可卖份额：' + fmtNumber(fund.shares)); return; }
 
   const amount = round2(shares * price);
+  const safeFee = round2(parseFloat(fee) || 0);
+  const net = round2(amount - safeFee);
+
   fund.shares = round2(fund.shares - shares);
   if (fund.shares < 0.001) {
     fund.shares = 0;
     fund.avgCost = 0;
   }
-  state.cash = round2(state.cash + amount);
+  state.cash = round2(state.cash + net);
 
   state.history.unshift({
     id: Date.now(),
@@ -1600,13 +1605,13 @@ function sell(fundId, price, shares, note, date) {
     price: round3(price),
     shares: shares,
     amount: amount,
-    fee: 0,
+    fee: safeFee,
     note: note || ''
   });
 
   save();
   renderAll();
-  alert('✅ 卖出成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n到账：' + fmtMoney(amount) + '\n当前现金：' + fmtMoney(state.cash));
+  alert('✅ 卖出成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n成交金额：' + fmtMoney(amount) + '\n手续费：' + fmtMoney(safeFee) + '\n净到账：' + fmtMoney(net) + '\n当前现金：' + fmtMoney(state.cash));
 }
 
 function addDividend(fundId, date, amount) {
@@ -1626,6 +1631,7 @@ function addDividend(fundId, date, amount) {
     price: 0,
     shares: 0,
     amount: safeAmount,
+    fee: 0,
     note: '',
     dividendId: did
   });
@@ -1731,7 +1737,7 @@ function exportHoldingsCSV() {
 }
 
 function exportHistoryCSV() {
-  const headers = ['日期', '类型', '基金代码', '基金名称', '价格', '份额', '金额', '心得'];
+  const headers = ['日期', '类型', '基金代码', '基金名称', '价格', '份额', '金额', '手续费', '心得'];
   const typeMap = { buy: '买入', sell: '卖出', dividend: '分红', tax: '税补缴', fee: '组合费' };
   const rows = [];
   for (let i = 0; i < state.history.length; i++) {
@@ -1745,6 +1751,7 @@ function exportHistoryCSV() {
       h.price || '',
       h.shares || '',
       h.amount || '',
+      h.fee || '',
       h.note || ''
     ]);
   }
@@ -1922,6 +1929,7 @@ function parseStatementFile(file) {
             price: 0,
             shares: 0,
             amount: deductAmount,
+            fee: 0,
             note: tradeType === 'tax' ? '🗂 红利税补缴' : '🧾 港股通组合费',
             dividendId: tradeType === 'tax' ? did : undefined
           });
@@ -2011,6 +2019,7 @@ function parseStatementFile(file) {
             price: 0,
             shares: 0,
             amount: dividendAmount,
+            fee: 0,
             note: '📥 交割单导入',
             dividendId: did
           });
@@ -2145,8 +2154,10 @@ function refreshFundSelects() {
 function updateBuyPreview() {
   const price = parseFloat(document.getElementById('buyPrice').value) || 0;
   const shares = parseFloat(document.getElementById('buyShares').value) || 0;
+  const fee = parseFloat(document.getElementById('buyFee').value) || 0;
   const amount = round2(shares * price);
-  document.getElementById('buyAmountPreview').textContent = fmtMoney(amount);
+  const total = round2(amount + fee);
+  document.getElementById('buyAmountPreview').textContent = fmtMoney(total);
 }
 
 function openFundDetail(id) {
@@ -2183,7 +2194,7 @@ function openFundDetail(id) {
   const historyItems = state.history.filter(function(h) { return h.fundId === id; });
   let histHtml = '';
   if (!historyItems.length) {
-    histHtml = '<tr><td colspan="6"><div class="empty">该基金暂无交易记录</div></td></tr>';
+    histHtml = '<tr><td colspan="7"><div class="empty">该基金暂无交易记录</div></td></tr>';
   } else {
     const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'], tax: ['税补缴', 'tag-tax'], fee: ['组合费', 'tag-fee'] };
     for (let i = 0; i < historyItems.length; i++) {
@@ -2195,6 +2206,7 @@ function openFundDetail(id) {
       histHtml += '<td>' + (h.price ? fmtPrice(h.price) : '—') + '</td>';
       histHtml += '<td>' + (h.shares ? fmtNumber(h.shares) : '—') + '</td>';
       histHtml += '<td>' + (h.amount ? fmtMoney(h.amount) : '—') + '</td>';
+      histHtml += '<td>' + (h.fee ? fmtMoney(h.fee) : '—') + '</td>';
       histHtml += '<td class="note-cell">' + (h.note ? esc(h.note) : '—') + '</td>';
       histHtml += '</tr>';
     }
@@ -2270,14 +2282,19 @@ function initTradeForms() {
   function calcSellAmount() {
     const shares = parseFloat(document.getElementById('sellShares').value) || 0;
     const price = parseFloat(document.getElementById('sellPrice').value) || 0;
-    document.getElementById('sellAmount').textContent = fmtMoney(round2(shares * price));
+    const fee = parseFloat(document.getElementById('sellFee').value) || 0;
+    const amount = round2(shares * price);
+    const net = round2(amount - fee);
+    document.getElementById('sellAmount').textContent = fmtMoney(net);
   }
   document.getElementById('sellShares').addEventListener('input', calcSellAmount);
   document.getElementById('sellPrice').addEventListener('input', calcSellAmount);
+  document.getElementById('sellFee').addEventListener('input', calcSellAmount);
 
-  // 买入份额输入时更新预计花费
+  // 买入份额/价格/手续费输入时更新预计花费
   document.getElementById('buyShares').addEventListener('input', updateBuyPreview);
   document.getElementById('buyPrice').addEventListener('input', updateBuyPreview);
+  document.getElementById('buyFee').addEventListener('input', updateBuyPreview);
   document.getElementById('buyFund').addEventListener('change', function() {
     document.getElementById('buyPrice').value = state.prices[this.value] || 0;
     updateBuyPreview();
@@ -2297,12 +2314,14 @@ function initTradeForms() {
     const date = document.getElementById('buyDate').value;
     const price = parseFloat(document.getElementById('buyPrice').value);
     const shares = parseFloat(document.getElementById('buyShares').value);
+    const fee = parseFloat(document.getElementById('buyFee').value) || 0;
     const note = document.getElementById('buyNote').value.trim();
     if (!date) { alert('请选择交易日期'); return; }
     if (!price || price <= 0) { alert('请输入有效价格'); return; }
     if (!shares || shares <= 0) { alert('请输入有效买入份额'); return; }
-    buy(fundId, price, shares, note, date);
+    buy(fundId, price, shares, fee, note, date);
     document.getElementById('buyShares').value = '';
+    document.getElementById('buyFee').value = '0';
     document.getElementById('buyNote').value = '';
     updateBuyPreview();
   });
@@ -2313,12 +2332,14 @@ function initTradeForms() {
     const date = document.getElementById('sellDate').value;
     const price = parseFloat(document.getElementById('sellPrice').value);
     const shares = parseFloat(document.getElementById('sellShares').value);
+    const fee = parseFloat(document.getElementById('sellFee').value) || 0;
     const note = document.getElementById('sellNote').value.trim();
     if (!date) { alert('请选择交易日期'); return; }
     if (!price || price <= 0) { alert('请输入有效价格'); return; }
     if (!shares || shares <= 0) { alert('请输入有效卖出份额'); return; }
-    sell(fundId, price, shares, note, date);
+    sell(fundId, price, shares, fee, note, date);
     document.getElementById('sellShares').value = '';
+    document.getElementById('sellFee').value = '0';
     document.getElementById('sellAmount').textContent = '¥0.00';
     document.getElementById('sellNote').value = '';
   });
