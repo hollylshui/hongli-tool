@@ -462,6 +462,27 @@ tr:hover td { background: var(--hover); }
 .add-fund-form div { display: flex; flex-direction: column; gap: 4px; }
 .add-fund-form label { font-size: 12px; color: var(--text2); }
 .add-fund-form button { align-self: flex-end; }
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--input-bg);
+  border-radius: 16px;
+}
+.filter-bar .form-group { margin-bottom: 0; min-width: 120px; }
+.filter-bar .filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+@media (max-width: 600px) {
+  .filter-bar { flex-direction: column; }
+  .filter-bar .form-group { min-width: 100%; }
+  .filter-bar .filter-actions { align-items: stretch; }
+  .filter-bar .filter-actions button { width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -744,6 +765,36 @@ tr:hover td { background: var(--hover); }
   <div id="tab-history" class="tab-content">
     <div class="card">
       <div class="card-title">📜 全部交易流水 <span style="font-size:13px;color:var(--text2);font-weight:400;">（可删除误操作记录）</span></div>
+      <div class="filter-bar">
+        <div class="form-group">
+          <label>开始日期</label>
+          <input type="date" id="filterStart">
+        </div>
+        <div class="form-group">
+          <label>结束日期</label>
+          <input type="date" id="filterEnd">
+        </div>
+        <div class="form-group">
+          <label>类型</label>
+          <select id="filterType">
+            <option value="all">全部</option>
+            <option value="buy">买入</option>
+            <option value="sell">卖出</option>
+            <option value="dividend">分红</option>
+            <option value="tax">税补缴</option>
+            <option value="fee">组合费</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>基金</label>
+          <select id="filterFund">
+            <option value="all">全部</option>
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-ghost btn-sm" onclick="clearHistoryFilter()">清空筛选</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1157,6 +1208,31 @@ function deleteHistory(id) {
   alert('🗑️ 已删除该' + typeName + '记录，数据已自动更新。');
 }
 
+// ------- 历史筛选相关函数 -------
+function getFilteredHistory() {
+  const start = document.getElementById('filterStart').value;
+  const end = document.getElementById('filterEnd').value;
+  const type = document.getElementById('filterType').value;
+  const fund = document.getElementById('filterFund').value;
+  return state.history.filter(function(h) {
+    const d = String(h.time || '').slice(0,10);
+    if (start && d < start) return false;
+    if (end && d > end) return false;
+    if (type !== 'all' && h.type !== type) return false;
+    if (fund !== 'all' && h.fundId !== fund) return false;
+    return true;
+  });
+}
+
+function clearHistoryFilter() {
+  document.getElementById('filterStart').value = '';
+  document.getElementById('filterEnd').value = '';
+  document.getElementById('filterType').value = 'all';
+  document.getElementById('filterFund').value = 'all';
+  renderHistory();
+}
+// ------- 筛选函数结束 -------
+
 function toggleEdit(field) {
   const box = document.getElementById('editBox-' + field);
   const display = document.getElementById(field + 'Display');
@@ -1396,14 +1472,16 @@ function renderDividend() {
 
 function renderHistory() {
   const tbody = document.getElementById('historyTableBody');
-  if (!state.history.length) {
-    tbody.innerHTML = '<tr><td colspan="9"><div class="empty">暂无交易记录</div></td></tr>';
+  const filtered = getFilteredHistory();
+  if (!filtered.length) {
+    const isEmptyNoFilter = state.history.length === 0;
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty">' + (isEmptyNoFilter ? '暂无交易记录' : '没有符合条件的记录') + '</div></td></tr>';
     return;
   }
   const typeMap = { buy: ['买入', 'tag-buy'], sell: ['卖出', 'tag-sell'], dividend: ['分红', 'tag-dividend'], tax: ['税补缴', 'tag-tax'], fee: ['组合费', 'tag-fee'] };
   let html = '';
-  for (let i = 0; i < state.history.length; i++) {
-    const h = state.history[i];
+  for (let i = 0; i < filtered.length; i++) {
+    const h = filtered[i];
     const tInfo = typeMap[h.type] || [h.type, ''];
     html += '<tr>';
     html += '<td style="white-space:nowrap;">' + esc(formatHistoryTime(h.time)) + '</td>';
@@ -2143,6 +2221,18 @@ function refreshFundSelects() {
   document.getElementById('sellFund').innerHTML = options;
   document.getElementById('divFund').innerHTML = options;
 
+  // 更新历史筛选基金下拉
+  const filterFundSel = document.getElementById('filterFund');
+  if (filterFundSel) {
+    const prevVal = filterFundSel.value;
+    let foptions = '<option value="all">全部</option>';
+    for (const id in state.funds) {
+      foptions += '<option value="' + esc(id) + '">' + esc(fundLabel(id)) + '</option>';
+    }
+    filterFundSel.innerHTML = foptions;
+    filterFundSel.value = prevVal;
+  }
+
   const buyId = document.getElementById('buyFund').value;
   const sellId = document.getElementById('sellFund').value;
   document.getElementById('buyPrice').value = state.prices[buyId] || 0;
@@ -2359,6 +2449,12 @@ function initTradeForms() {
     e.preventDefault();
     addNote();
   });
+
+  // 历史筛选控件事件绑定
+  document.getElementById('filterStart').addEventListener('change', renderHistory);
+  document.getElementById('filterEnd').addEventListener('change', renderHistory);
+  document.getElementById('filterType').addEventListener('change', renderHistory);
+  document.getElementById('filterFund').addEventListener('change', renderHistory);
 }
 
 function init() {
@@ -2409,6 +2505,7 @@ window.deleteNote = deleteNote;
 window.updateIndex = updateIndex;
 window.toggleTheme = toggleTheme;
 window.deleteHistory = deleteHistory;
+window.clearHistoryFilter = clearHistoryFilter;
 
 })();
 </script>
