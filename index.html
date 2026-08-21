@@ -345,7 +345,8 @@ tr:hover td { background: var(--hover); }
 .tag-tax { background: var(--tag-tax-bg); color: var(--tag-tax-text); }
 .tag-fee { background: var(--tag-fee-bg); color: var(--tag-fee-text); }
 .tag-closed { background: var(--table-th); color: var(--text2); }
-.price-input {
+.price-input,
+.yield-price-input {
   width: 90px;
   padding: 7px 10px;
   border: 1px solid var(--border);
@@ -359,7 +360,8 @@ tr:hover td { background: var(--hover); }
   outline: none;
   transition: all 0.2s;
 }
-.price-input:focus { border-color: var(--primary); background: var(--input-bg); box-shadow: 0 0 0 3px rgba(10,132,255,0.12); }
+.price-input:focus,
+.yield-price-input:focus { border-color: var(--primary); background: var(--input-bg); box-shadow: 0 0 0 3px rgba(10,132,255,0.12); }
 .settings-input {
   width: 100%;
   min-width: 120px;
@@ -507,6 +509,7 @@ tr:hover td { background: var(--hover); }
       <button class="segment" data-tab="index">🌡 指数</button>
       <button class="segment" data-tab="trade">🔄 买卖</button>
       <button class="segment" data-tab="dividend">🧧 分红</button>
+      <button class="segment" data-tab="yield">🎯 目标价</button>
       <button class="segment" data-tab="notes">📝 笔记</button>
       <button class="segment" data-tab="history">📜 历史</button>
       <button class="segment" data-tab="settings">⚙️ 设置</button>
@@ -721,6 +724,34 @@ tr:hover td { background: var(--hover); }
             <tr><th>日期</th><th>基金</th><th>金额</th><th>操作</th></tr>
           </thead>
           <tbody id="dividendTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 目标股息率 -->
+  <div id="tab-yield" class="tab-content">
+    <div class="card">
+      <div class="card-title">🎯 目标股息率买入股价</div>
+      <p class="hint" style="margin-bottom:16px;">根据“设置”中的年分红（元/10份）自动计算。绿色标记表示当前股价已达到对应股息率。可直接在“当前股价”列修改价格并自动保存。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>名称</th>
+              <th>年分红<br>(元/10份)</th>
+              <th>当前股价</th>
+              <th>当前股息率</th>
+              <th>目标价<br>3%</th>
+              <th>目标价<br>4%</th>
+              <th>目标价<br>5%</th>
+              <th>目标价<br>6%</th>
+              <th>目标价<br>7%</th>
+              <th>目标价<br>8%</th>
+            </tr>
+          </thead>
+          <tbody id="yieldTableBody"></tbody>
         </table>
       </div>
     </div>
@@ -1233,6 +1264,46 @@ function clearHistoryFilter() {
 }
 // ------- 筛选函数结束 -------
 
+// ------- 目标股息率计算函数 -------
+function renderYieldTarget() {
+  const tbody = document.getElementById('yieldTableBody');
+  if (!tbody) return;
+  const rates = [3, 4, 5, 6, 7, 8];
+  let html = '';
+  let hasData = false;
+
+  for (const id in state.funds) {
+    const f = state.funds[id];
+    const annualDiv = f.annualDividend || 0;
+    if (annualDiv <= 0) continue; // 没有分红数据则跳过
+    hasData = true;
+
+    const price = state.prices[id] || 0;
+    const perShareDiv = annualDiv / 10;
+    const currentYield = price > 0 ? (perShareDiv / price * 100) : null;
+
+    html += '<tr>';
+    html += '<td style="font-family:monospace;font-weight:600;">' + esc(id) + '</td>';
+    html += '<td>' + esc(f.name) + '</td>';
+    html += '<td>' + fmtNumber(annualDiv, 3) + '</td>';
+    html += '<td><input type="number" class="yield-price-input" data-id="' + esc(id) + '" value="' + (price ? round3(price) : '') + '" step="0.001" min="0"></td>';
+    html += '<td>' + (currentYield !== null ? currentYield.toFixed(2) + '%' : '—') + '</td>';
+
+    for (let i = 0; i < rates.length; i++) {
+      const rate = rates[i];
+      const targetPrice = perShareDiv / (rate / 100);
+      const met = price > 0 && targetPrice <= price;
+      html += '<td' + (met ? ' style="background:var(--tag-buy-bg); color:var(--tag-buy-text); font-weight:600;"' : '') + '>' + fmtPrice(targetPrice) + '</td>';
+    }
+    html += '</tr>';
+  }
+
+  tbody.innerHTML = hasData
+    ? html
+    : '<tr><td colspan="11"><div class="empty">暂无有分红数据的基金，请先在「设置」中填写年分红</div></td></tr>';
+}
+// ------- 目标股息率函数结束 -------
+
 function toggleEdit(field) {
   const box = document.getElementById('editBox-' + field);
   const display = document.getElementById(field + 'Display');
@@ -1601,6 +1672,7 @@ function renderAll() {
   renderHistory();
   renderNotes();
   renderIndex();
+  renderYieldTarget();
   renderSettings();
 }
 
@@ -1618,6 +1690,7 @@ function switchTab(tab) {
   if (tab === 'history') renderHistory();
   if (tab === 'notes') renderNotes();
   if (tab === 'index') renderIndex();
+  if (tab === 'yield') renderYieldTarget();
   if (tab === 'settings') renderSettings();
 }
 
@@ -1745,13 +1818,17 @@ function deleteDividend(id) {
 }
 
 document.addEventListener('change', function(e) {
-  if (e.target.classList && e.target.classList.contains('price-input')) {
+  if (e.target.classList && (e.target.classList.contains('price-input') || e.target.classList.contains('yield-price-input'))) {
     const id = e.target.dataset.id;
     const val = parseFloat(e.target.value);
     if (!isNaN(val) && val > 0) {
       state.prices[id] = round3(val);
       save();
-      renderAccount();
+      if (e.target.classList.contains('price-input')) {
+        renderAccount();
+      } else {
+        renderYieldTarget();
+      }
     }
   }
 });
