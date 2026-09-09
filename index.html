@@ -485,6 +485,12 @@ tr:hover td { background: var(--hover); }
   .filter-bar .filter-actions { align-items: stretch; }
   .filter-bar .filter-actions button { width: 100%; }
 }
+/* ---- 指数比值走势图 ---- */
+.chart-wrap { position: relative; height: 300px; }
+@media (max-width: 600px) { .chart-wrap { height: 230px; } }
+.chart-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.chart-empty { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; text-align: center; font-size: 14px; color: var(--text2); line-height: 1.8; }
+.chart-empty.show { display: flex; }
 </style>
 </head>
 <body>
@@ -603,6 +609,16 @@ tr:hover td { background: var(--hover); }
           <input type="number" id="indexHong" step="0.01" min="0" placeholder="如 4500.00">
         </div>
       </div>
+      <div style="margin-top:16px; display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding:14px 16px; background:var(--input-bg); border-radius:16px;">
+        <div class="form-group" style="margin-bottom:0;">
+          <label>记录日期（默认今天）</label>
+          <input type="date" id="indexRecordDate" class="settings-input" style="min-width:150px;">
+        </div>
+        <div style="flex:1; min-width:220px; padding-bottom:2px;">
+          <div style="font-size:12px; color:var(--text2); line-height:1.5;">上方为实时预览，不会自动记录。确认两个指数点位无误后，点击右侧按钮即可把当天比值存为一个历史记录点（用于下方走势图）。</div>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="recordIndexNow()">📌 记录本次比值</button>
+      </div>
       <div style="background:var(--input-bg); padding:24px; border-radius:16px; text-align:center; margin-top:16px;">
         <div style="font-size:14px; color:var(--text2); margin-bottom:8px;">当前比值（创业板指 ÷ 中证红利）</div>
         <div id="indexRatioDisplay" style="font-size:48px; font-weight:800; letter-spacing:-0.03em;">—</div>
@@ -617,6 +633,35 @@ tr:hover td { background: var(--hover); }
             <tr><th>比值区间</th><th>估值状态</th><th>建议仓位</th></tr>
           </thead>
           <tbody id="indexRuleTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <span>📈 比值走势（创业板指 ÷ 中证红利）</span>
+        <span style="display:inline-flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="exportIndexHistoryCSV()">导出 CSV</button>
+        </span>
+      </div>
+      <div id="indexChartMeta" class="hint" style="margin-top:0; margin-bottom:10px; display:none;"></div>
+      <div id="indexChartWrap" class="chart-wrap">
+        <canvas id="indexRatioChart"></canvas>
+        <div id="indexChartEmpty" class="chart-empty">
+          <div>暂无历史记录<br>输入两个指数点位后点击「📌 记录本次比值」即可生成走势图</div>
+        </div>
+      </div>
+      <p class="hint">横轴按记录先后排列（不等同真实时间间距）；虚线为轮动参考阈值 0.35 / 0.45 / 0.55 / 0.65，底色对应估值区间。鼠标悬停数据点可查看明细。历史数据随「💾 完整备份 JSON」一并导出。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 比值记录明细 <span style="font-size:13px;color:var(--text2);font-weight:400;">（最新在前，可删除误记录）</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>日期</th><th>创业板指</th><th>中证红利</th><th>比值</th><th>估值状态</th><th>操作</th></tr>
+          </thead>
+          <tbody id="indexHistoryBody"></tbody>
         </table>
       </div>
     </div>
@@ -957,7 +1002,8 @@ function createDefaultState() {
     history: [],
     dividends: [],
     notes: [],
-    indexPoints: { gem: 0, hong: 0 }
+    indexPoints: { gem: 0, hong: 0 },
+    indexHistory: []
   };
 }
 
@@ -1010,7 +1056,8 @@ function loadState() {
           history: Array.isArray(p.history) ? p.history : [],
           dividends: Array.isArray(p.dividends) ? p.dividends : [],
           notes: Array.isArray(p.notes) ? p.notes : [],
-          indexPoints: Object.assign({ gem: 0, hong: 0 }, p.indexPoints || {})
+          indexPoints: Object.assign({ gem: 0, hong: 0 }, p.indexPoints || {}),
+          indexHistory: Array.isArray(p.indexHistory) ? p.indexHistory : []
         };
         save();
         return;
@@ -1598,7 +1645,24 @@ function renderNotes() {
   tbody.innerHTML = html;
 }
 
-function renderIndex() {
+const INDEX_RULES = [
+  { range: '≤ 0.35', status: '极度低估', advice: '创业板80%红利20%', bg: '#FF3B30', color: '#fff' },
+  { range: '0.35 ~ 0.45', status: '低估', advice: '创业板65%红利35%', bg: '#FF9500', color: '#fff' },
+  { range: '0.45 ~ 0.55', status: '均衡（不动）', advice: '维持不动', bg: '#FFCC00', color: '#1D1D1F' },
+  { range: '0.55 ~ 0.65', status: '高估', advice: '红利65%创业板35%', bg: '#FF9500', color: '#fff' },
+  { range: '≥ 0.65', status: '极度高估', advice: '红利80%创业板20%', bg: '#FF3B30', color: '#fff' }
+];
+
+function getRuleForRatio(ratio) {
+  if (ratio <= 0.35) return { index: 0, rule: INDEX_RULES[0] };
+  if (ratio <= 0.45) return { index: 1, rule: INDEX_RULES[1] };
+  if (ratio <= 0.55) return { index: 2, rule: INDEX_RULES[2] };
+  if (ratio <= 0.65) return { index: 3, rule: INDEX_RULES[3] };
+  return { index: 4, rule: INDEX_RULES[4] };
+}
+
+// 实时预览：只更新大数字/状态/建议/规则表高亮（输入过程不重绘图表，避免闪烁）
+function refreshIndexLive() {
   const gem = parseFloat(state.indexPoints.gem) || 0;
   const hong = parseFloat(state.indexPoints.hong) || 0;
   const ratioEl = document.getElementById('indexRatioDisplay');
@@ -1606,25 +1670,13 @@ function renderIndex() {
   const adviceEl = document.getElementById('indexAdvice');
   const tbody = document.getElementById('indexRuleTableBody');
 
-  const rules = [
-    { range: '≤ 0.35', status: '极度低估', advice: '创业板80%红利20%', bg: '#FF3B30', color: '#fff' },
-    { range: '0.35 ~ 0.45', status: '低估', advice: '创业板65%红利35%', bg: '#FF9500', color: '#fff' },
-    { range: '0.45 ~ 0.55', status: '均衡（不动）', advice: '维持不动', bg: '#FFCC00', color: '#1D1D1F' },
-    { range: '0.55 ~ 0.65', status: '高估', advice: '红利65%创业板35%', bg: '#FF9500', color: '#fff' },
-    { range: '≥ 0.65', status: '极度高估', advice: '红利80%创业板20%', bg: '#FF3B30', color: '#fff' }
-  ];
-
   let currentIndex = -1;
   if (gem > 0 && hong > 0) {
     const ratio = gem / hong;
     ratioEl.textContent = ratio.toFixed(3);
-    if (ratio <= 0.35) currentIndex = 0;
-    else if (ratio <= 0.45) currentIndex = 1;
-    else if (ratio <= 0.55) currentIndex = 2;
-    else if (ratio <= 0.65) currentIndex = 3;
-    else currentIndex = 4;
-
-    const r = rules[currentIndex];
+    const g = getRuleForRatio(ratio);
+    currentIndex = g.index;
+    const r = g.rule;
     statusEl.textContent = r.status;
     statusEl.style.background = r.bg;
     statusEl.style.color = r.color;
@@ -1638,8 +1690,8 @@ function renderIndex() {
   }
 
   let html = '';
-  for (let i = 0; i < rules.length; i++) {
-    const r = rules[i];
+  for (let i = 0; i < INDEX_RULES.length; i++) {
+    const r = INDEX_RULES[i];
     html += '<tr' + (i === currentIndex ? ' style="background:' + r.bg + ';color:' + r.color + ';font-weight:700;"' : '') + '>';
     html += '<td>' + r.range + '</td>';
     html += '<td>' + r.status + '</td>';
@@ -1647,6 +1699,397 @@ function renderIndex() {
     html += '</tr>';
   }
   tbody.innerHTML = html;
+}
+
+function renderIndex() {
+  refreshIndexLive();
+  renderIndexRecordsTable();
+  updateIndexChartMeta();
+  drawIndexChart();
+}
+
+// ---------- 指数比值历史记录 ----------
+function renderIndexRecordsTable() {
+  const tbody = document.getElementById('indexHistoryBody');
+  if (!tbody) return;
+  const list = (state.indexHistory || []).slice().sort(function(a, b) {
+    if (a.date === b.date) return (b.id || 0) - (a.id || 0);
+    return a.date < b.date ? 1 : -1;
+  });
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">暂无比值记录：输入两个指数点位后点击「📌 记录本次比值」即可开始积累走势</div></td></tr>';
+    return;
+  }
+  let html = '';
+  for (let i = 0; i < list.length; i++) {
+    const rec = list[i];
+    const g = getRuleForRatio(rec.ratio);
+    html += '<tr>';
+    html += '<td style="white-space:nowrap;">' + esc(rec.date) + '</td>';
+    html += '<td>' + fmtNumber(rec.gem) + '</td>';
+    html += '<td>' + fmtNumber(rec.hong) + '</td>';
+    html += '<td style="font-weight:700;">' + rec.ratio.toFixed(4) + '</td>';
+    html += '<td><span style="color:' + g.rule.bg + ';font-weight:600;">' + esc(g.rule.status) + '</span></td>';
+    html += '<td><button class="btn btn-danger btn-sm" onclick="deleteIndexRecord(' + rec.id + ')">删除</button></td>';
+    html += '</tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+function updateIndexChartMeta() {
+  const el = document.getElementById('indexChartMeta');
+  if (!el) return;
+  const list = (state.indexHistory || []).slice().sort(function(a, b) {
+    if (a.date === b.date) return (a.id || 0) - (b.id || 0);
+    return a.date < b.date ? -1 : 1;
+  });
+  if (!list.length) { el.style.display = 'none'; el.textContent = ''; return; }
+  const first = list[0];
+  const last = list[list.length - 1];
+  const g = getRuleForRatio(last.ratio);
+  el.style.display = 'block';
+  el.innerHTML = '共 <strong>' + list.length + '</strong> 条记录（' + esc(first.date) + ' ~ ' + esc(last.date) + '） · 最新记录：' + esc(last.date) + ' 比值 <strong>' + last.ratio.toFixed(4) + '</strong>（<span style="color:' + g.rule.bg + ';font-weight:600;">' + esc(g.rule.status) + '</span>）';
+}
+
+// ---------- 比值走势图（纯 Canvas，零依赖） ----------
+let chartHoverId = null;
+let chartGeo = null;
+
+function drawIndexChart() {
+  const canvas = document.getElementById('indexRatioChart');
+  const wrap = document.getElementById('indexChartWrap');
+  const emptyEl = document.getElementById('indexChartEmpty');
+  if (!canvas || !wrap || !emptyEl) return;
+
+  const list = (state.indexHistory || []).slice().sort(function(a, b) {
+    if (a.date === b.date) return (a.id || 0) - (b.id || 0);
+    return a.date < b.date ? -1 : 1;
+  });
+  updateIndexChartMeta();
+
+  if (!list.length) {
+    emptyEl.classList.add('show');
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    chartGeo = null;
+    return;
+  }
+  emptyEl.classList.remove('show');
+
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const cssW = wrap.clientWidth;
+  const cssH = wrap.clientHeight;
+  if (!cssW || !cssH) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const pl = 50, pr = 34, pt = 12, pb = 30;
+  const plotW = cssW - pl - pr;
+  const plotH = cssH - pt - pb;
+  if (plotW <= 20 || plotH <= 20) return;
+
+  let minR = Infinity, maxR = -Infinity;
+  for (let i = 0; i < list.length; i++) {
+    const v = list[i].ratio;
+    if (v < minR) minR = v;
+    if (v > maxR) maxR = v;
+  }
+  let lo = minR, hi = maxR;
+  let pad = (hi - lo) * 0.15;
+  if (pad < 0.02) pad = 0.02;
+  lo -= pad; hi += pad;
+
+  const X = function(i) { return list.length === 1 ? pl + plotW / 2 : pl + (i / (list.length - 1)) * plotW; };
+  const Y = function(v) { return pt + (hi - v) / (hi - lo) * plotH; };
+  chartGeo = { list: list, X: X, Y: Y, pl: pl, pr: pr, pt: pt, pb: pb, plotW: plotW, plotH: plotH, cssW: cssW, cssH: cssH };
+
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
+  const labelColor = isDark ? '#98989D' : '#8E8E93';
+  const thColor = isDark ? 'rgba(255,255,255,0.32)' : 'rgba(0,0,0,0.28)';
+  const lineColor = isDark ? '#0A84FF' : '#007AFF';
+  const baseFont = '11px -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif';
+
+  // 估值区间底色（按比值高度的横带）
+  const bands = [
+    { from: -1e9, to: 0.35, fill: 'rgba(255,59,48,0.06)' },
+    { from: 0.35, to: 0.45, fill: 'rgba(255,149,0,0.10)' },
+    { from: 0.45, to: 0.55, fill: 'rgba(255,204,0,0.10)' },
+    { from: 0.55, to: 0.65, fill: 'rgba(255,149,0,0.10)' },
+    { from: 0.65, to: 1e9, fill: 'rgba(255,59,48,0.06)' }
+  ];
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pl, pt, plotW, plotH);
+  ctx.clip();
+  for (let b = 0; b < bands.length; b++) {
+    const y1 = Y(Math.max(bands[b].from, lo));
+    const y2 = Y(Math.min(bands[b].to, hi));
+    if (y2 <= y1) continue;
+    ctx.fillStyle = bands[b].fill;
+    ctx.fillRect(pl, y1, plotW, y2 - y1);
+  }
+  ctx.restore();
+
+  // 横向网格线（每 0.1 一条）与纵轴刻度
+  ctx.font = baseFont;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  let gv = Math.ceil(lo * 10) / 10;
+  for (; gv <= hi + 1e-9; gv += 0.1) {
+    const yv = Y(gv);
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pl, yv);
+    ctx.lineTo(pl + plotW, yv);
+    ctx.stroke();
+    ctx.fillStyle = labelColor;
+    ctx.fillText(gv.toFixed(1), pl - 6, yv);
+  }
+
+  // 策略阈值虚线 0.35 / 0.45 / 0.55 / 0.65
+  const thresholds = [0.35, 0.45, 0.55, 0.65];
+  ctx.textAlign = 'left';
+  for (let t = 0; t < thresholds.length; t++) {
+    const tv = thresholds[t];
+    if (tv < lo || tv > hi) continue;
+    const yt = Y(tv);
+    ctx.save();
+    ctx.strokeStyle = thColor;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pl, yt);
+    ctx.lineTo(pl + plotW, yt);
+    ctx.stroke();
+    ctx.restore();
+    const lab = tv.toFixed(2);
+    const tw = ctx.measureText(lab).width;
+    ctx.fillStyle = isDark ? 'rgba(28,28,30,0.85)' : 'rgba(255,255,255,0.92)';
+    ctx.fillRect(pl + plotW + 2, yt - 7, tw + 8, 14);
+    ctx.fillStyle = thColor;
+    ctx.fillText(lab, pl + plotW + 6, yt);
+  }
+
+  // 折线
+  ctx.save();
+  ctx.beginPath();
+  for (let i = 0; i < list.length; i++) {
+    const xi = X(i), yi = Y(list[i].ratio);
+    if (i === 0) ctx.moveTo(xi, yi); else ctx.lineTo(xi, yi);
+  }
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.restore();
+
+  // 数据点（最后一个点加大）
+  for (let i = 0; i < list.length; i++) {
+    const xi = X(i), yi = Y(list[i].ratio);
+    const isLast = (i === list.length - 1);
+    ctx.beginPath();
+    ctx.arc(xi, yi, isLast ? 4.5 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = isDark ? '#2C2C2E' : '#fff';
+    ctx.stroke();
+  }
+
+  // 悬浮高亮（十字线 + 放大点 + 气泡）
+  let hoverIdx = -1;
+  if (chartHoverId !== null) {
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === chartHoverId) { hoverIdx = i; break; }
+    }
+  }
+  if (hoverIdx >= 0) {
+    const xi = X(hoverIdx), yi = Y(list[hoverIdx].ratio);
+    ctx.save();
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xi, pt);
+    ctx.lineTo(xi, pt + plotH);
+    ctx.stroke();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(xi, yi, 7, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = isDark ? '#1C1C1E' : '#fff';
+    ctx.stroke();
+    drawChartTooltip(ctx, hoverIdx, xi, yi);
+  }
+
+  // 横轴日期（自动抽稀）
+  ctx.font = baseFont;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  const maxLabels = Math.max(1, Math.floor(plotW / 78));
+  const labelStep = list.length > maxLabels ? Math.ceil(list.length / maxLabels) : 1;
+  for (let i = 0; i < list.length; i += labelStep) {
+    const xi = X(i);
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xi, pt + plotH);
+    ctx.lineTo(xi, pt + plotH + 4);
+    ctx.stroke();
+    ctx.fillStyle = labelColor;
+    ctx.fillText(esc(list[i].date), xi, pt + plotH + 7);
+  }
+  if (list.length > 1 && (list.length - 1) % labelStep !== 0) {
+    const xi = X(list.length - 1);
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xi, pt + plotH);
+    ctx.lineTo(xi, pt + plotH + 4);
+    ctx.stroke();
+    ctx.fillStyle = labelColor;
+    ctx.fillText(esc(list[list.length - 1].date), xi, pt + plotH + 7);
+  }
+}
+
+function drawChartTooltip(ctx, idx, x, y) {
+  if (!chartGeo) return;
+  const rec = chartGeo.list[idx];
+  const g = getRuleForRatio(rec.ratio);
+  const lines = [
+    '日期：' + rec.date,
+    '创业板指：' + fmtNumber(rec.gem),
+    '中证红利：' + fmtNumber(rec.hong),
+    '比值：' + rec.ratio.toFixed(4),
+    '状态：' + g.rule.status + '（' + g.rule.range + '）'
+  ];
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif';
+  let maxW = 0;
+  for (let i = 0; i < lines.length; i++) maxW = Math.max(maxW, ctx.measureText(lines[i]).width);
+  const bw = maxW + 20;
+  const bh = lines.length * 17 + 10;
+  let bx = x + 16;
+  if (bx + bw > chartGeo.cssW - 4) bx = x - bw - 16;
+  if (bx < 4) bx = 4;
+  let by = y - bh - 12;
+  if (by < 4) by = y + 14;
+  ctx.beginPath();
+  roundRectPath(ctx, bx, by, bw, bh, 8);
+  ctx.fillStyle = 'rgba(28,28,30,0.93)';
+  ctx.fill();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf('比值：') === 0) {
+      ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif';
+      ctx.fillStyle = '#6FB6FF';
+    } else {
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif';
+      ctx.fillStyle = i === 0 ? 'rgba(255,255,255,0.62)' : '#fff';
+    }
+    ctx.fillText(lines[i], bx + 10, by + 11 + i * 17);
+  }
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function handleChartMouseMove(e) {
+  if (!chartGeo) return;
+  const canvas = document.getElementById('indexRatioChart');
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const list = chartGeo.list;
+  let best = -1;
+  let bestD = 15;
+  for (let i = 0; i < list.length; i++) {
+    const dx = mx - chartGeo.X(i);
+    const dy = my - chartGeo.Y(list[i].ratio);
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  const id = best >= 0 ? list[best].id : null;
+  if (id !== chartHoverId) {
+    chartHoverId = id;
+    canvas.style.cursor = id !== null ? 'pointer' : 'default';
+    drawIndexChart();
+  }
+}
+
+function handleChartMouseLeave() {
+  if (chartHoverId !== null) {
+    chartHoverId = null;
+    const canvas = document.getElementById('indexRatioChart');
+    if (canvas) canvas.style.cursor = 'default';
+    drawIndexChart();
+  }
+}
+
+// 记录/删除/导出
+function recordIndexNow() {
+  const gem = parseFloat(document.getElementById('indexGem').value);
+  const hong = parseFloat(document.getElementById('indexHong').value);
+  if (!gem || gem <= 0 || !hong || hong <= 0) {
+    alert('请先在输入框中填写创业板指与中证红利的有效点位（须大于 0）');
+    return;
+  }
+  const dateInput = document.getElementById('indexRecordDate');
+  const date = (dateInput && dateInput.value) ? dateInput.value : getLocalDate();
+  const ratio = Math.round(gem / hong * 10000) / 10000;
+  if (!Array.isArray(state.indexHistory)) state.indexHistory = [];
+  const last = state.indexHistory[state.indexHistory.length - 1];
+  if (last && last.date === date && Math.abs(last.gem - gem) < 1e-9 && Math.abs(last.hong - hong) < 1e-9) {
+    alert('⚠️ ' + date + ' 已记录过相同的两个点位（比值 ' + ratio.toFixed(4) + '），如需改动请删除原记录后重录。');
+    return;
+  }
+  state.indexHistory.push({ id: Date.now(), date: date, gem: gem, hong: hong, ratio: ratio });
+  state.indexPoints.gem = gem;
+  state.indexPoints.hong = hong;
+  save();
+  renderIndex();
+  const g = getRuleForRatio(ratio);
+  alert('✅ 已记录 ' + date + ' 的指数比值：\n创业板指 ' + fmtNumber(gem) + '\n中证红利 ' + fmtNumber(hong) + '\n比值 ' + ratio.toFixed(4) + '\n估值状态：' + g.rule.status);
+}
+
+function deleteIndexRecord(id) {
+  if (!confirm('⚠️ 确定删除这条比值记录吗？删除后走势图与明细将同步更新。')) return;
+  state.indexHistory = (state.indexHistory || []).filter(function(r) { return r.id !== id; });
+  save();
+  renderIndex();
+}
+
+function exportIndexHistoryCSV() {
+  const list = (state.indexHistory || []).slice().sort(function(a, b) {
+    if (a.date === b.date) return (a.id || 0) - (b.id || 0);
+    return a.date < b.date ? -1 : 1;
+  });
+  if (!list.length) { alert('暂无比值记录可导出，先点击「📌 记录本次比值」添加几条吧'); return; }
+  const headers = ['日期', '创业板指', '中证红利', '比值', '估值状态'];
+  const rows = [];
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    const g = getRuleForRatio(r.ratio);
+    rows.push([r.date, r.gem, r.hong, r.ratio.toFixed(4), g.rule.status]);
+  }
+  downloadCSV('hongli-index-ratio.csv', headers, rows);
+  alert('✅ 已导出 ' + list.length + ' 条比值记录 CSV！');
 }
 
 function renderSettings() {
@@ -1849,6 +2292,8 @@ function toggleTheme() {
   root.setAttribute('data-theme', next);
   localStorage.setItem('hongliTheme', next);
   updateThemeIcon(next);
+  const indexTab = document.getElementById('tab-index');
+  if (indexTab && indexTab.classList.contains('active')) drawIndexChart();
 }
 
 function updateThemeIcon(theme) {
@@ -1862,7 +2307,7 @@ function updateIndex() {
   state.indexPoints.gem = gem;
   state.indexPoints.hong = hong;
   save();
-  renderIndex();
+  refreshIndexLive();
 }
 
 function exportJSON() {
@@ -1939,7 +2384,8 @@ document.getElementById('importFile').addEventListener('change', function(e) {
         history: Array.isArray(data.history) ? data.history : [],
         dividends: Array.isArray(data.dividends) ? data.dividends : [],
         notes: Array.isArray(data.notes) ? data.notes : [],
-        indexPoints: Object.assign({ gem: 0, hong: 0 }, data.indexPoints || {})
+        indexPoints: Object.assign({ gem: 0, hong: 0 }, data.indexPoints || {}),
+        indexHistory: Array.isArray(data.indexHistory) ? data.indexHistory : []
       };
       save();
       renderAll();
@@ -2430,6 +2876,7 @@ function initTradeForms() {
   document.getElementById('buyDate').value = getLocalDate();
   document.getElementById('sellDate').value = getLocalDate();
   document.getElementById('noteDate').value = getLocalDate();
+  document.getElementById('indexRecordDate').value = getLocalDate();
 
   document.getElementById('indexGem').value = state.indexPoints.gem || '';
   document.getElementById('indexHong').value = state.indexPoints.hong || '';
@@ -2563,6 +3010,19 @@ document.querySelector('#tab-account .table-wrap table').id = 'fundTable';
 
 init();
 
+// ================= 指数比值走势图：事件绑定 =================
+(function() {
+  const canvas = document.getElementById('indexRatioChart');
+  if (canvas) {
+    canvas.addEventListener('mousemove', handleChartMouseMove);
+    canvas.addEventListener('mouseleave', handleChartMouseLeave);
+  }
+  window.addEventListener('resize', function() {
+    const tab = document.getElementById('tab-index');
+    if (tab && tab.classList.contains('active') && state) drawIndexChart();
+  });
+})();
+
 // ================= 将所有内联事件所需的函数挂载到全局 =================
 window.toggleEdit = toggleEdit;
 window.saveEdit = saveEdit;
@@ -2583,6 +3043,9 @@ window.updateIndex = updateIndex;
 window.toggleTheme = toggleTheme;
 window.deleteHistory = deleteHistory;
 window.clearHistoryFilter = clearHistoryFilter;
+window.recordIndexNow = recordIndexNow;
+window.deleteIndexRecord = deleteIndexRecord;
+window.exportIndexHistoryCSV = exportIndexHistoryCSV;
 
 })();
 </script>
