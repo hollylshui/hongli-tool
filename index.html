@@ -491,6 +491,33 @@ tr:hover td { background: var(--hover); }
 .chart-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .chart-empty { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; text-align: center; font-size: 14px; color: var(--text2); line-height: 1.8; }
 .chart-empty.show { display: flex; }
+/* ---- 分红 / 红利税补缴 ---- */
+.summary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 22px;
+  padding: 14px 18px;
+  background: var(--input-bg);
+  border-radius: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.summary-bar b { font-size: 16px; font-variant-numeric: tabular-nums; color: var(--text); }
+.summary-bar .pos { color: var(--tag-div-text); }
+.summary-bar .neg { color: var(--danger); }
+.hold-hint {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--text2);
+}
+.hold-hint.warn { background: var(--tag-div-bg); color: var(--tag-div-text); }
+.hold-hint.ok { background: var(--tag-buy-bg); color: var(--tag-buy-text); }
 </style>
 </head>
 <body>
@@ -555,7 +582,7 @@ tr:hover td { background: var(--hover); }
       <div class="stat-card">
         <div class="stat-label">🧧 累计分红</div>
         <div class="stat-value" id="totalDividend">¥0.00</div>
-        <div class="stat-sub">已扣除税补缴</div>
+        <div class="stat-sub" id="totalDividendSub">已扣除税补缴</div>
       </div>
     </div>
 
@@ -741,32 +768,68 @@ tr:hover td { background: var(--hover); }
 
   <!-- 分红 -->
   <div id="tab-dividend" class="tab-content">
-    <div class="card">
-      <div class="card-title">🧧 登记分红</div>
-      <form id="dividendForm">
-        <div class="form-inline">
-          <div class="form-group">
-            <label>分红来源基金</label>
-            <select id="divFund"></select>
+    <div class="form-grid">
+      <div class="card">
+        <div class="card-title">🧧 登记分红</div>
+        <form id="dividendForm">
+          <div class="form-inline">
+            <div class="form-group">
+              <label>分红来源基金</label>
+              <select id="divFund"></select>
+            </div>
+            <div class="form-group">
+              <label>到账日期</label>
+              <input type="date" id="divDate" required>
+            </div>
+            <div class="form-group">
+              <label>分红金额（元）</label>
+              <input type="number" id="divAmount" step="0.01" min="0" placeholder="0.00" required>
+            </div>
           </div>
           <div class="form-group">
-            <label>到账日期</label>
-            <input type="date" id="divDate" required>
+            <label>备注（可选）</label>
+            <input type="text" id="divNote" placeholder="如：2024 年度分红">
+          </div>
+          <button type="submit" class="btn btn-primary">✅ 确认记录并入账</button>
+          <p class="hint">分红金额会自动加入现金余额，并计入该基金的累计分红。</p>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-title">💸 红利税补缴</div>
+        <form id="taxForm">
+          <div class="form-inline">
+            <div class="form-group">
+              <label>补缴来源基金</label>
+              <select id="taxFund"></select>
+            </div>
+            <div class="form-group">
+              <label>补缴日期</label>
+              <input type="date" id="taxDate" required>
+            </div>
+            <div class="form-group">
+              <label>补缴金额（元）</label>
+              <input type="number" id="taxAmount" step="0.01" min="0" placeholder="0.00" required>
+            </div>
           </div>
           <div class="form-group">
-            <label>分红金额（元）</label>
-            <input type="number" id="divAmount" step="0.01" min="0" placeholder="0.00" required>
+            <label>补缴原因 / 备注（可选）</label>
+            <input type="text" id="taxNote" placeholder="如：持股不满 1 年，红利税补缴">
           </div>
-        </div>
-        <button type="submit" class="btn btn-primary">✅ 确认记录并入账</button>
-      </form>
+          <button type="submit" class="btn btn-danger">💸 确认补缴并扣款</button>
+          <p class="hint">补缴金额将从现金余额中扣除，并从该基金的累计分红中冲减。</p>
+          <div id="taxHoldHint" class="hold-hint">选择基金后，这里会显示持股天数与红利税参考估算。</div>
+        </form>
+      </div>
     </div>
+
     <div class="card">
-      <div class="card-title">📒 分红历史</div>
+      <div class="card-title">📒 分红 / 税补缴历史</div>
+      <div id="dividendSummary" class="summary-bar"></div>
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>日期</th><th>基金</th><th>金额</th><th>操作</th></tr>
+            <tr><th>日期</th><th>类型</th><th>基金</th><th>金额</th><th>备注</th><th>操作</th></tr>
           </thead>
           <tbody id="dividendTableBody"></tbody>
         </table>
@@ -1412,8 +1475,19 @@ function renderAccount() {
   document.getElementById('cashDisplay').textContent = fmtMoney(state.cash);
   document.getElementById('stockValue').textContent = fmtMoney(stockVal);
 
-  const totalDividend = state.dividends.reduce(function(s, d) { return s + (d.amount || 0); }, 0);
-  document.getElementById('totalDividend').textContent = fmtMoney(totalDividend);
+  let grossDividend = 0;
+  let taxClawback = 0;
+  for (let i = 0; i < state.dividends.length; i++) {
+    const amt = state.dividends[i].amount || 0;
+    if (amt < 0) taxClawback += -amt; else grossDividend += amt;
+  }
+  document.getElementById('totalDividend').textContent = fmtMoney(grossDividend - taxClawback);
+  const divSubEl = document.getElementById('totalDividendSub');
+  if (divSubEl) {
+    divSubEl.textContent = taxClawback > 0
+      ? ('分红 +' + fmtMoney(grossDividend) + ' · 税补缴 -' + fmtMoney(taxClawback))
+      : ('累计收到分红 ' + fmtMoney(grossDividend));
+  }
 
   if (state.initialCapital > 0) {
     const initProfit = totalAsset - state.initialCapital;
@@ -1570,22 +1644,152 @@ function sortTable(key) {
 
 function renderDividend() {
   const tbody = document.getElementById('dividendTableBody');
+  if (!tbody) return;
+
+  // 汇总条：累计分红 / 税补缴 / 净额
+  const summaryEl = document.getElementById('dividendSummary');
+  if (summaryEl) {
+    let gross = 0;
+    let tax = 0;
+    for (let i = 0; i < state.dividends.length; i++) {
+      const amt = state.dividends[i].amount || 0;
+      if (amt < 0) tax += -amt; else gross += amt;
+    }
+    summaryEl.innerHTML =
+      '<span>累计分红收入 <b class="pos">+' + fmtMoney(gross) + '</b></span>' +
+      '<span>红利税补缴 <b class="neg">-' + fmtMoney(tax) + '</b></span>' +
+      '<span>净分红 <b>' + fmtMoney(gross - tax) + '</b></span>' +
+      '<span>共 ' + state.dividends.length + ' 条记录</span>';
+  }
+
   if (!state.dividends.length) {
-    tbody.innerHTML = '<tr><td colspan="4"><div class="empty">暂无分红记录，快去登记一笔吧 🧧</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">暂无分红记录，快去登记一笔吧 🧧</div></td></tr>';
     return;
   }
+
+  const list = state.dividends.slice().sort(function(a, b) {
+    if (a.time === b.time) return (b.id || 0) - (a.id || 0);
+    return a.time < b.time ? 1 : -1;
+  });
+
   let html = '';
-  for (let i = 0; i < state.dividends.length; i++) {
-    const d = state.dividends[i];
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i];
     const isNeg = d.amount < 0;
     html += '<tr>';
-    html += '<td>' + esc(d.time) + '</td>';
+    html += '<td style="white-space:nowrap;">' + esc(d.time) + '</td>';
+    html += '<td><span class="tag ' + (isNeg ? 'tag-tax' : 'tag-dividend') + '">' + (isNeg ? '税补缴' : '分红') + '</span></td>';
     html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + esc(d.fundId) + '\')">' + esc(fundLabel(d.fundId)) + '</button></td>';
-    html += '<td style="color:' + (isNeg ? 'var(--danger)' : 'var(--warning)') + ';font-weight:600;">' + (isNeg ? '-' : '+') + fmtMoney(Math.abs(d.amount)) + (isNeg ? '（税补缴）' : '') + '</td>';
+    html += '<td style="color:' + (isNeg ? 'var(--danger)' : 'var(--warning)') + ';font-weight:600;">' + (isNeg ? '-' : '+') + fmtMoney(Math.abs(d.amount)) + '</td>';
+    html += '<td class="note-cell">' + (d.note ? esc(d.note) : '—') + '</td>';
     html += '<td><button class="btn btn-danger btn-sm" onclick="deleteDividend(' + d.id + ')">删除</button></td>';
     html += '</tr>';
   }
   tbody.innerHTML = html;
+}
+
+// ---------- 红利税补缴：持股参考信息 ----------
+function getFundFirstBuyDate(fundId) {
+  let first = '';
+  for (let i = 0; i < state.history.length; i++) {
+    const h = state.history[i];
+    if (h.fundId !== fundId || h.type !== 'buy') continue;
+    const d = String(h.time || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    if (!first || d < first) first = d;
+  }
+  return first;
+}
+
+function daysBetweenDates(fromDate, toDate) {
+  const a = Date.parse(fromDate + 'T00:00:00Z');
+  const b = Date.parse(toDate + 'T00:00:00Z');
+  if (isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+function getFundDividendSum(fundId, refDate) {
+  let total = 0;
+  let recent = 0;
+  let cutoff = '';
+  const ref = Date.parse(refDate + 'T00:00:00Z');
+  if (!isNaN(ref)) {
+    const d = new Date(ref);
+    d.setUTCDate(d.getUTCDate() - 365);
+    cutoff = d.toISOString().slice(0, 10);
+  }
+  for (let i = 0; i < state.history.length; i++) {
+    const h = state.history[i];
+    if (h.fundId !== fundId || h.type !== 'dividend') continue;
+    const amt = h.amount || 0;
+    total += amt;
+    if (cutoff && String(h.time || '').slice(0, 10) >= cutoff) recent += amt;
+  }
+  return { total: round2(total), recent: round2(recent) };
+}
+
+// 按持有天数取一个粗略的参考税率（股息红利差别化个人所得税）
+function referenceTaxRate(days) {
+  if (days === null || days === undefined) return 0;
+  if (days <= 30) return 0.20;
+  if (days <= 365) return 0.10;
+  return 0;
+}
+
+function updateTaxHoldHint() {
+  const hintEl = document.getElementById('taxHoldHint');
+  const sel = document.getElementById('taxFund');
+  if (!hintEl || !sel || !state) return;
+
+  const fundId = sel.value;
+  const dateEl = document.getElementById('taxDate');
+  const refDate = (dateEl && dateEl.value) ? dateEl.value : getLocalDate();
+
+  if (!fundId || !state.funds[fundId]) {
+    hintEl.className = 'hold-hint';
+    hintEl.dataset.estimate = '';
+    hintEl.innerHTML = '选择基金后，这里会显示持股天数与红利税参考估算。';
+    return;
+  }
+
+  const firstBuy = getFundFirstBuyDate(fundId);
+  let days = firstBuy ? daysBetweenDates(firstBuy, refDate) : null;
+  if (days !== null && days < 0) days = 0;
+
+  const sum = getFundDividendSum(fundId, refDate);
+  const rate = referenceTaxRate(days);
+  const estimate = rate > 0 ? round2(sum.recent * rate) : 0;
+
+  let rateText;
+  if (days === null) rateText = '⚠️ 没有找到该基金的买入记录，无法判断持股天数，请手动确认税率。';
+  else if (rate === 0.20) rateText = '⚠️ 自首次买入仅 ' + days + ' 天（≤1 个月），参考税率 20%。';
+  else if (rate === 0.10) rateText = '⚠️ 自首次买入 ' + days + ' 天（1 个月 ~ 1 年），参考税率 10%。';
+  else rateText = '✅ 自首次买入已 ' + days + ' 天（满 1 年），通常免征红利税。';
+
+  const lines = [];
+  lines.push(firstBuy
+    ? ('📌 首次买入：' + esc(firstBuy) + ' 　至 ' + esc(refDate) + '：' + days + ' 天')
+    : '📌 未找到该基金的买入记录');
+  lines.push('已收该基金分红合计：<b>' + fmtMoney(sum.total) + '</b>　近 12 个月：<b>' + fmtMoney(sum.recent) + '</b>');
+  lines.push(rateText);
+  if (estimate > 0) {
+    lines.push('粗略参考补缴额（近 12 个月分红 × ' + Math.round(rate * 100) + '%）：<b>' + fmtMoney(estimate) + '</b>' +
+      ' <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;" onclick="fillTaxFromEstimate()">填入金额</button>');
+  }
+  lines.push('仅供粗略参考，实际补缴金额与税率请以券商交割单为准。');
+
+  hintEl.dataset.estimate = estimate > 0 ? String(estimate) : '';
+  hintEl.className = 'hold-hint' + (rate > 0 && estimate > 0 ? ' warn' : (rate === 0 && days !== null ? ' ok' : ''));
+  hintEl.innerHTML = lines.join('<br>');
+}
+
+function fillTaxFromEstimate() {
+  const hintEl = document.getElementById('taxHoldHint');
+  const val = hintEl && hintEl.dataset.estimate ? parseFloat(hintEl.dataset.estimate) : 0;
+  if (!val || val <= 0) { alert('暂无可用的参考补缴金额，请手动填写。'); return; }
+  const input = document.getElementById('taxAmount');
+  input.value = val.toFixed(2);
+  input.focus();
 }
 
 function renderHistory() {
@@ -2117,6 +2321,7 @@ function renderAll() {
   renderIndex();
   renderYieldTarget();
   renderSettings();
+  updateTaxHoldHint();
 }
 
 function switchTab(tab) {
@@ -2208,15 +2413,16 @@ function sell(fundId, price, shares, fee, note, date) {
   alert('✅ 卖出成功！\n' + fundLabel(fundId) + '\n份额：' + fmtNumber(shares) + '\n成交金额：' + fmtMoney(amount) + '\n手续费：' + fmtMoney(safeFee) + '\n净到账：' + fmtMoney(net) + '\n当前现金：' + fmtMoney(state.cash));
 }
 
-function addDividend(fundId, date, amount) {
+function addDividend(fundId, date, amount, note) {
   const fund = state.funds[fundId];
   if (!fund) { alert('基金不存在'); return; }
 
   const safeAmount = round2(amount);
+  const safeNote = (note || '').trim();
   state.cash = round2(state.cash + safeAmount);
 
   const did = Date.now();
-  state.dividends.unshift({ id: did, time: date, fundId: fundId, amount: safeAmount });
+  state.dividends.unshift({ id: did, time: date, fundId: fundId, amount: safeAmount, note: safeNote });
   state.history.unshift({
     id: Date.now(),
     time: date,
@@ -2226,13 +2432,44 @@ function addDividend(fundId, date, amount) {
     shares: 0,
     amount: safeAmount,
     fee: 0,
-    note: '',
+    note: safeNote,
     dividendId: did
   });
 
   save();
   renderAll();
-  alert('🧧 分红登记成功！\n' + fundLabel(fundId) + '\n日期：' + date + '\n金额：' + fmtMoney(safeAmount) + '\n已自动加入现金。');
+  alert('🧧 分红登记成功！\n' + fundLabel(fundId) + '\n日期：' + date + '\n金额：' + fmtMoney(safeAmount) + '\n已自动加入现金。' + (safeNote ? '\n备注：' + safeNote : ''));
+}
+
+// ---------- 红利税补缴 ----------
+function addTaxClawback(fundId, date, amount, note) {
+  const fund = state.funds[fundId];
+  if (!fund) { alert('基金不存在'); return; }
+
+  const safeAmount = round2(amount);
+  if (!safeAmount || safeAmount <= 0) { alert('请输入有效的补缴金额'); return; }
+
+  const safeNote = (note || '').trim();
+  state.cash = round2(state.cash - safeAmount);
+
+  const did = Date.now();
+  state.dividends.unshift({ id: did, time: date, fundId: fundId, amount: -safeAmount, note: safeNote });
+  state.history.unshift({
+    id: Date.now(),
+    time: date,
+    type: 'tax',
+    fundId: fundId,
+    price: 0,
+    shares: 0,
+    amount: safeAmount,
+    fee: 0,
+    note: safeNote || '💸 红利税补缴',
+    dividendId: did
+  });
+
+  save();
+  renderAll();
+  alert('💸 红利税补缴已记录！\n' + fundLabel(fundId) + '\n日期：' + date + '\n补缴金额：' + fmtMoney(safeAmount) + '\n已从现金扣除，当前现金：' + fmtMoney(state.cash) + (safeNote ? '\n备注：' + safeNote : ''));
 }
 
 function deleteDividend(id) {
@@ -2244,8 +2481,8 @@ function deleteDividend(id) {
 
   const isTax = div.amount < 0;
   const confirmMsg = isTax
-    ? '删除该税补缴记录，对应金额将退回现金。确认继续？'
-    : '删除该分红记录，金额将从现金中扣除。确认继续？';
+    ? '⚠️ 确定删除这笔红利税补缴记录吗？\n\n日期：' + div.time + '\n基金：' + fundLabel(div.fundId) + '\n金额：' + fmtMoney(Math.abs(div.amount)) + '\n\n删除后该金额将退回现金。'
+    : '⚠️ 确定删除这笔分红记录吗？\n\n日期：' + div.time + '\n基金：' + fundLabel(div.fundId) + '\n金额：' + fmtMoney(div.amount) + '\n\n删除后该金额将从现金中扣除。';
   if (!confirm(confirmMsg)) return;
 
   state.cash = round2(state.cash - div.amount);
@@ -2535,7 +2772,7 @@ function parseStatementFile(file) {
             dividendId: tradeType === 'tax' ? did : undefined
           });
           if (tradeType === 'tax' && deductAmount > 0) {
-            state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: -deductAmount });
+            state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: -deductAmount, note: '📥 交割单导入' });
           }
           successCount++;
           continue;
@@ -2611,7 +2848,7 @@ function parseStatementFile(file) {
           const dividendAmount = round2(Math.abs(amount) || (shares * price));
           state.cash = round2(state.cash + dividendAmount);
           const did = Date.now();
-          state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: dividendAmount });
+          state.dividends.unshift({ id: did, time: displayTime, fundId: code, amount: dividendAmount, note: '📥 交割单导入' });
           state.history.unshift({
             id: Date.now(),
             time: displayTime,
@@ -2742,7 +2979,16 @@ function refreshFundSelects() {
   }
   document.getElementById('buyFund').innerHTML = options;
   document.getElementById('sellFund').innerHTML = options;
-  document.getElementById('divFund').innerHTML = options;
+
+  // 分红 / 税补缴下拉：重建后尽量保留原选择
+  const divSel = document.getElementById('divFund');
+  const taxSel = document.getElementById('taxFund');
+  const divPrev = divSel ? divSel.value : '';
+  const taxPrev = taxSel ? taxSel.value : '';
+  if (divSel) divSel.innerHTML = options;
+  if (taxSel) taxSel.innerHTML = options;
+  if (divSel && divPrev && state.funds[divPrev]) divSel.value = divPrev;
+  if (taxSel && taxPrev && state.funds[taxPrev]) taxSel.value = taxPrev;
 
   // 更新历史筛选基金下拉
   const filterFundSel = document.getElementById('filterFund');
@@ -2762,6 +3008,7 @@ function refreshFundSelects() {
   document.getElementById('sellPrice').value = state.prices[sellId] || 0;
   document.getElementById('sellAmount').textContent = '¥0.00';
   updateBuyPreview();
+  updateTaxHoldHint();
 }
 
 function updateBuyPreview() {
@@ -2877,6 +3124,12 @@ function initTradeForms() {
   document.getElementById('sellDate').value = getLocalDate();
   document.getElementById('noteDate').value = getLocalDate();
   document.getElementById('indexRecordDate').value = getLocalDate();
+  document.getElementById('divDate').value = getLocalDate();
+  document.getElementById('taxDate').value = getLocalDate();
+  updateTaxHoldHint();
+
+  document.getElementById('taxFund').addEventListener('change', updateTaxHoldHint);
+  document.getElementById('taxDate').addEventListener('change', updateTaxHoldHint);
 
   document.getElementById('indexGem').value = state.indexPoints.gem || '';
   document.getElementById('indexHong').value = state.indexPoints.hong || '';
@@ -2963,10 +3216,28 @@ function initTradeForms() {
     const fundId = document.getElementById('divFund').value;
     const date = document.getElementById('divDate').value;
     const amount = parseFloat(document.getElementById('divAmount').value);
+    const note = document.getElementById('divNote').value.trim();
     if (!date) { alert('请选择日期'); return; }
     if (!amount || amount <= 0) { alert('请输入有效分红金额'); return; }
-    addDividend(fundId, date, amount);
+    addDividend(fundId, date, amount, note);
     document.getElementById('divAmount').value = '';
+    document.getElementById('divNote').value = '';
+  });
+
+  document.getElementById('taxForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const fundId = document.getElementById('taxFund').value;
+    const date = document.getElementById('taxDate').value;
+    const amount = parseFloat(document.getElementById('taxAmount').value);
+    const note = document.getElementById('taxNote').value.trim();
+    if (!date) { alert('请选择补缴日期'); return; }
+    if (!amount || amount <= 0) { alert('请输入有效的补缴金额'); return; }
+    if (amount > state.cash) {
+      if (!confirm('⚠️ 补缴金额 ' + fmtMoney(amount) + ' 超过当前现金余额 ' + fmtMoney(state.cash) + '，继续记录会使现金变为负数。\n\n确认继续吗？')) return;
+    }
+    addTaxClawback(fundId, date, amount, note);
+    document.getElementById('taxAmount').value = '';
+    document.getElementById('taxNote').value = '';
   });
 
   document.getElementById('noteForm').addEventListener('submit', function(e) {
@@ -3038,6 +3309,7 @@ window.addFund = addFund;
 window.deleteFund = deleteFund;
 window.goToSell = goToSell;
 window.deleteDividend = deleteDividend;
+window.fillTaxFromEstimate = fillTaxFromEstimate;
 window.deleteNote = deleteNote;
 window.updateIndex = updateIndex;
 window.toggleTheme = toggleTheme;
