@@ -1002,7 +1002,7 @@ tr:hover td { background: var(--hover); }
         <button class="btn btn-primary" onclick="document.getElementById('statementFile').click()">📥 上传交割单 Excel/CSV</button>
         <input type="file" id="statementFile" accept=".xlsx,.xls,.csv" style="display:none;">
       </div>
-      <p class="hint">交割单导入支持 .xlsx / .xls / .csv 格式，自动识别常见列名（日期、类型、代码、名称、价格、份额、金额、手续费），导入前请先备份。</p>
+      <p class="hint">交割单导入支持 .xlsx / .xls / .csv 格式，自动识别常见列名，并按交易日期从早到晚处理。同日记录仍按文件原顺序。导入前会自动下载当前 JSON 备份；请核对导入结果。表格解析需要联网加载 SheetJS CDN，离线时无法导入交割单。</p><p class="hint" id="lastBackupHint">建议定期下载完整 JSON 备份，并妥善保存到其他设备。</p>
     </div>
 
     <div class="card danger-zone">
@@ -1241,8 +1241,10 @@ function saveFile(filename, content, mime) {
 function downloadCSV(filename, headers, rows) {
   const BOM = '\uFEFF';
   const esc = function(v) {
-    const s = String(v === undefined || v === null ? '' : v);
-    return s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0 ? '"' + s.replace(/"/g, '""') + '"' : s;
+    let s = String(v === undefined || v === null ? '' : v);
+    // Spreadsheet applications may evaluate text beginning with formula operators.
+    if (typeof v === 'string' && /^[\s\u0000-\u001f]*[=+@\-]/.test(s)) s = "'" + s;
+    return s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0 || s.indexOf('\r') >= 0 ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
   const lines = [headers];
   for (let i = 0; i < rows.length; i++) lines.push(rows[i]);
@@ -1776,7 +1778,7 @@ function updateTaxHoldHint() {
     lines.push('粗略参考补缴额（近 12 个月分红 × ' + Math.round(rate * 100) + '%）：<b>' + fmtMoney(estimate) + '</b>' +
       ' <button type="button" class="btn btn-ghost btn-sm" style="margin-left:6px;" onclick="fillTaxFromEstimate()">填入金额</button>');
   }
-  lines.push('仅供粗略参考，实际补缴金额与税率请以券商交割单为准。');
+  lines.push('⚠️ 仅为粗略提示：按基金首次买入日估算，无法识别分批买入、卖出或清仓后重买对应的持有期；不应据此确定应缴税额。请以券商交割单为准。');
 
   hintEl.dataset.estimate = estimate > 0 ? String(estimate) : '';
   hintEl.className = 'hold-hint' + (rate > 0 && estimate > 0 ? ' warn' : (rate === 0 && days !== null ? ' ok' : ''));
@@ -2547,10 +2549,25 @@ function updateIndex() {
   refreshIndexLive();
 }
 
+function updateBackupHint() {
+  const el = document.getElementById('lastBackupHint');
+  if (!el) return;
+  let saved = '';
+  try { saved = localStorage.getItem('hongliLastBackupAt') || ''; } catch (e) {}
+  if (!saved) {
+    el.textContent = '尚无备份时间记录。建议定期下载完整 JSON 备份，并妥善保存到其他设备。';
+    return;
+  }
+  const d = new Date(saved);
+  el.textContent = '本浏览器记录的上次备份时间：' + (isNaN(d.getTime()) ? saved : formatDateTime(saved)) + '。备份文件请妥善保存到其他设备。';
+}
+
 function exportJSON() {
   const data = JSON.stringify(Object.assign({}, state, { exportedAt: new Date().toISOString() }), null, 2);
   const date = new Date().toISOString().split('T')[0];
   saveFile('hongli-backup-' + date + '.json', data, 'application/json');
+  try { localStorage.setItem('hongliLastBackupAt', new Date().toISOString()); } catch (e) {}
+  updateBackupHint();
   alert('✅ 完整数据备份已导出！');
 }
 
@@ -2606,7 +2623,9 @@ document.getElementById('importFile').addEventListener('change', function(e) {
       if (typeof data.cash !== 'number' || !data.funds || typeof data.funds !== 'object') {
         throw new Error('文件格式不正确');
       }
-      if (!confirm('导入将覆盖当前所有数据，确认继续？')) return;
+      if (!confirm('导入将覆盖当前所有数据。继续前会自动下载一份当前数据备份，确认继续？')) return;
+      const beforeImport = JSON.stringify(Object.assign({}, state, { exportedAt: new Date().toISOString() }), null, 2);
+      saveFile('hongli-pre-import-backup-' + new Date().toISOString().slice(0, 10) + '.json', beforeImport, 'application/json');
 
       if (!data.version || data.version < 4) {
         migrateFundsFromOldVersion(data);
@@ -2673,7 +2692,10 @@ function parseStatementFile(file) {
   }
   const reader = new FileReader();
   reader.onload = function(ev) {
+    const originalState = state;
     try {
+      // Work on a clone so a parsing/runtime/storage error cannot leave partial changes.
+      state = JSON.parse(JSON.stringify(state));
       const fileName = file.name.toLowerCase();
       const isCsv = fileName.endsWith('.csv') || fileName.endsWith('.txt');
       let data;
@@ -2707,6 +2729,18 @@ function parseStatementFile(file) {
       let successCount = 0;
       let skipCount = 0;
       const errors = [];
+      const originalOrder = new Map(rows.map(function(row, index) { return [row, index]; }));
+      function sortDateValue(row) {
+        let value = row[timeCol];
+        if (typeof value === 'number' || /^\d{4,5}$/.test(String(value || ''))) {
+          const serial = Number(value);
+          if (serial > 20000 && serial < 60000) return serial;
+        }
+        const normalized = String(value || '').replace(/年|\//g, '-').replace(/月/g, '-').replace(/日/g, '').trim();
+        const match = normalized.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+        return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000 : Number.POSITIVE_INFINITY;
+      }
+      rows.sort(function(a, b) { return sortDateValue(a) - sortDateValue(b) || originalOrder.get(a) - originalOrder.get(b); });
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -2720,7 +2754,7 @@ function parseStatementFile(file) {
         else if (typeText.match(/分红|红利|股息|股利/)) tradeType = 'dividend';
         else {
           skipCount++;
-          errors.push('第' + (i+1) + '行：无法识别业务类型「' + typeText + '」');
+      errors.push('原文件第' + (originalOrder.get(row) + 1) + '行：无法识别业务类型「' + typeText + '」');
           continue;
         }
 
@@ -2728,7 +2762,7 @@ function parseStatementFile(file) {
         const name = parseStatementCell(row, nameCol, 'string') || code;
         if (!code) {
           skipCount++;
-          errors.push('第' + (i+1) + '行：缺少证券代码');
+          errors.push('原文件第' + (originalOrder.get(row) + 1) + '行：缺少证券代码');
           continue;
         }
 
@@ -2784,7 +2818,7 @@ function parseStatementFile(file) {
           const buyShares = Math.abs(shares);
           if (buyShares <= 0) {
             skipCount++;
-            errors.push('第' + (i+1) + '行：买入份额为0');
+            errors.push('原文件第' + (originalOrder.get(row) + 1) + '行：买入份额为0');
             continue;
           }
           const effectivePrice = amount !== 0 && buyShares > 0 ? Math.abs(amount) / buyShares : price;
@@ -2817,7 +2851,7 @@ function parseStatementFile(file) {
           const sellShares = Math.abs(shares);
           if (sellShares > fund.shares + 0.01) {
             skipCount++;
-            errors.push('第' + (i+1) + '行：卖出份额超过持仓 (' + code + ')');
+            errors.push('原文件第' + (originalOrder.get(row) + 1) + '行：卖出份额超过持仓 (' + code + ')');
             continue;
           }
           const effectivePrice = amount !== 0 && sellShares > 0 ? Math.abs(amount) / sellShares : price;
@@ -2877,8 +2911,11 @@ function parseStatementFile(file) {
       alert(resultMsg);
 
     } catch (err) {
+      state = originalState;
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(originalState)); } catch (restoreStorageErr) {}
       console.error(err);
-      alert('❌ 解析文件失败：' + err.message);
+      try { renderAll(); refreshFundSelects(); } catch (restoreErr) {}
+      alert('❌ 解析文件失败，未保留本次导入的部分更改：' + err.message);
     }
   };
 
@@ -2896,6 +2933,10 @@ document.getElementById('statementFile').addEventListener('change', function(e) 
     e.target.value = '';
     return;
   }
+  const backupTime = new Date();
+  saveFile('hongli-pre-statement-backup-' + backupTime.toISOString().slice(0, 10) + '.json', JSON.stringify(Object.assign({}, state, { exportedAt: backupTime.toISOString() }), null, 2), 'application/json');
+  try { localStorage.setItem('hongliLastBackupAt', backupTime.toISOString()); } catch (err) {}
+  updateBackupHint();
   parseStatementFile(file);
   e.target.value = '';
 });
@@ -3255,6 +3296,7 @@ function initTradeForms() {
 function init() {
 document.querySelector('#tab-account .table-wrap table').id = 'fundTable';
   loadState();
+  updateBackupHint();
   document.getElementById('divDate').value = getLocalDate();
   document.getElementById('noteDate').value = getLocalDate();
 
