@@ -1215,10 +1215,23 @@ function formatDateTime(iso) {
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
+function normalizeRecordDate(value) {
+  const raw = String(value == null ? '' : value).trim();
+  const compact = raw.match(/^(\d{4})(\d{2})(\d{2})(.*)$/);
+  if (compact) {
+    const y = Number(compact[1]), m = Number(compact[2]), d = Number(compact[3]);
+    const check = new Date(Date.UTC(y, m - 1, d));
+    if (check.getUTCFullYear() === y && check.getUTCMonth() === m - 1 && check.getUTCDate() === d)
+      return compact[1] + '-' + compact[2] + '-' + compact[3] + compact[4];
+  }
+  return raw;
+}
+
 function formatHistoryTime(t) {
   if (typeof t !== 'string') return formatDateTime(t);
-  if (t.indexOf('T') >= 0 || t.indexOf(' ') >= 0) return formatDateTime(t);
-  return t;
+  const normalized = normalizeRecordDate(t);
+  if (normalized.indexOf('T') >= 0 || normalized.indexOf(' ') >= 0) return formatDateTime(normalized);
+  return normalized;
 }
 
 function getLocalDate() {
@@ -1670,8 +1683,10 @@ function renderDividend() {
   }
 
   const list = state.dividends.slice().sort(function(a, b) {
-    if (a.time === b.time) return (b.id || 0) - (a.id || 0);
-    return a.time < b.time ? 1 : -1;
+    const dateA = normalizeRecordDate(a.time);
+    const dateB = normalizeRecordDate(b.time);
+    if (dateA === dateB) return (b.id || 0) - (a.id || 0);
+    return dateA < dateB ? 1 : -1;
   });
 
   let html = '';
@@ -1679,7 +1694,7 @@ function renderDividend() {
     const d = list[i];
     const isNeg = d.amount < 0;
     html += '<tr>';
-    html += '<td style="white-space:nowrap;">' + esc(d.time) + '</td>';
+    html += '<td style="white-space:nowrap;">' + esc(normalizeRecordDate(d.time)) + '</td>';
     html += '<td><span class="tag ' + (isNeg ? 'tag-tax' : 'tag-dividend') + '">' + (isNeg ? '税补缴' : '分红') + '</span></td>';
     html += '<td><button class="fund-name-link" onclick="openFundDetail(\'' + esc(d.fundId) + '\')">' + esc(fundLabel(d.fundId)) + '</button></td>';
     html += '<td style="color:' + (isNeg ? 'var(--danger)' : 'var(--warning)') + ';font-weight:600;">' + (isNeg ? '-' : '+') + fmtMoney(Math.abs(d.amount)) + '</td>';
@@ -2736,7 +2751,7 @@ function parseStatementFile(file) {
           const serial = Number(value);
           if (serial > 20000 && serial < 60000) return serial;
         }
-        const normalized = String(value || '').replace(/年|\//g, '-').replace(/月/g, '-').replace(/日/g, '').trim();
+        const normalized = normalizeRecordDate(String(value || '').replace(/年|\//g, '-').replace(/月/g, '-').replace(/日/g, '').trim());
         const match = normalized.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
         return match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / 86400000 : Number.POSITIVE_INFINITY;
       }
@@ -2783,6 +2798,7 @@ function parseStatementFile(file) {
         }
         timeRaw = String(timeRaw).replace(/\//g, '-').replace(/年/g, '-').replace(/月/g, '-').replace(/日/g, '').trim();
         if (!timeRaw) timeRaw = getLocalDate();
+        timeRaw = normalizeRecordDate(timeRaw);
         const displayTime = timeRaw;
 
         if (!state.funds[code]) {
