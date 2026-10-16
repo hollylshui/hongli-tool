@@ -584,6 +584,16 @@ tr:hover td { background: var(--hover); }
         <div class="stat-value" id="totalDividend">¥0.00</div>
         <div class="stat-sub" id="totalDividendSub">已扣除税补缴</div>
       </div>
+      <div class="stat-card">
+        <div class="stat-label">💰 预计年分红收入</div>
+        <div class="stat-value" id="annualDividendIncome">¥0.00</div>
+        <div class="stat-sub" id="annualDividendIncomeSub">按「每份年分红」估算</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">🎯 组合分红率（成本口径）</div>
+        <div class="stat-value" id="portfolioCostYield">0.00%</div>
+        <div class="stat-sub" id="portfolioCostYieldSub">年分红 ÷ 持仓成本</div>
+      </div>
     </div>
 
     <div class="card">
@@ -841,14 +851,14 @@ tr:hover td { background: var(--hover); }
   <div id="tab-yield" class="tab-content">
     <div class="card">
       <div class="card-title">🎯 目标股息率买入股价</div>
-      <p class="hint" style="margin-bottom:16px;">根据“设置”中的年分红（元/10份）自动计算。绿色标记表示当前股价已达到对应股息率。可直接在“当前股价”列修改价格并自动保存。</p>
+      <p class="hint" style="margin-bottom:16px;">根据“设置”中的<b>每份年分红（元/份）</b>自动计算。绿色标记表示当前股价已达到对应股息率。可直接在“当前股价”列修改价格并自动保存。</p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>代码</th>
               <th>名称</th>
-              <th>年分红<br>(元/10份)</th>
+              <th>年分红<br>(元/份)</th>
               <th>当前股价</th>
               <th>当前股息率</th>
               <th>目标价<br>3%</th>
@@ -952,7 +962,7 @@ tr:hover td { background: var(--hover); }
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>代码</th><th>名称</th><th>年分红（元/10份）</th><th>链接</th><th>当前价</th><th>操作</th></tr>
+            <tr><th>代码</th><th>名称</th><th>年分红（元/份）</th><th>链接</th><th>当前价</th><th>操作</th></tr>
           </thead>
           <tbody id="fundSettingsTable"></tbody>
         </table>
@@ -973,8 +983,8 @@ tr:hover td { background: var(--hover); }
             <input type="text" id="newFundName" placeholder="如 上证红利ETF">
           </div>
           <div>
-            <label>年分红（元/10份，选填）</label>
-            <input type="number" id="newFundDiv" step="0.001" min="0" placeholder="如 3.00">
+            <label>年分红（元/份，选填）</label>
+            <input type="number" id="newFundDiv" step="0.001" min="0" placeholder="如 0.090">
           </div>
           <div>
             <label>当前价（选填）</label>
@@ -1041,12 +1051,40 @@ tr:hover td { background: var(--hover); }
 const STORAGE_KEY = 'hongliProState';
 const LEGACY_KEYS = ['hongliTool', 'hongli_data', 'dividendTool', 'hongliPro'];
 
+/* ============================================================
+   【本次修正的核心】annualDividend 的单位语义
+   ------------------------------------------------------------
+   修正前：annualDividend 被当作"每10份分红（元/10份）"，
+           而所有收益计算里又除以 10 → 等于除以 100，
+           结果被缩小 10 倍。
+   修正后：annualDividend 统一为"每份年分红（元/份）"，
+           计算时直接使用，不再做任何 /10 运算。
+   版本号：v5（v4 及以前为"元/10份"口径）
+   ------------------------------------------------------------
+   注意：下面 DEFAULT_FUNDS 里各标的的分红数值，
+         ETF 取"2026年度官方累计派息（元/份）"；
+         个股需你按"去年全年每股现金红利（元/股）"逐年更新。
+   ============================================================ */
+const DIVIDEND_UNIT_VERSION = 5;
+
 const DEFAULT_FUNDS = {
-  '510880': { id: '510880', name: '上证红利ETF', shares: 0, avgCost: 0, annualDividend: 3.00, link: 'https://fund.eastmoney.com/510880.html' },
-  '515180': { id: '515180', name: '中证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.80, link: 'https://fund.eastmoney.com/515180.html' },
-  '512890': { id: '512890', name: '红利低波ETF', shares: 0, avgCost: 0, annualDividend: 0.50, link: 'https://fund.eastmoney.com/512890.html' },
-  '510300': { id: '510300', name: '沪深300ETF', shares: 0, avgCost: 0, annualDividend: 1.00, link: 'https://fund.eastmoney.com/510300.html' },
-  '159915': { id: '159915', name: '创业板ETF', shares: 0, avgCost: 0, annualDividend: 0.20, link: 'https://fund.eastmoney.com/159915.html' }
+  // ---- ETF：天天基金官方「2026年度累计分红」换算为每份 ----
+  '510880': { id: '510880', name: '上证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.310, link: 'https://fund.eastmoney.com/510880.html' },
+  '515080': { id: '515080', name: '招商中证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.050, link: 'https://fund.eastmoney.com/515080.html' },
+  '513530': { id: '513530', name: '华泰港股红利ETF（月）', shares: 0, avgCost: 0, annualDividend: 0.090, link: 'https://fund.eastmoney.com/513530.html' },
+  '520900': { id: '520900', name: '广发港股红利ETF（季）', shares: 0, avgCost: 0, annualDividend: 0.033, link: 'https://fund.eastmoney.com/520900.html' },
+  '512890': { id: '512890', name: '红利低波ETF', shares: 0, avgCost: 0, annualDividend: 0.040, link: 'https://fund.eastmoney.com/512890.html' },
+  '515180': { id: '515180', name: '中证红利ETF', shares: 0, avgCost: 0, annualDividend: 0.055, link: 'https://fund.eastmoney.com/515180.html' },
+  '510300': { id: '510300', name: '沪深300ETF', shares: 0, avgCost: 0, annualDividend: 0.070, link: 'https://fund.eastmoney.com/510300.html' },
+  '159915': { id: '159915', name: '创业板ETF', shares: 0, avgCost: 0, annualDividend: 0, link: 'https://fund.eastmoney.com/159915.html' },
+  // ---- 个股：填「上一完整年度 每股现金红利（元/股，税前）」 ----
+  // 600900 已核实：2025年中期0.21 + 末期0.79 = 全年 1.00 元/股
+  '600900': { id: '600900', name: '长江电力', shares: 0, avgCost: 0, annualDividend: 1.000, link: '' },
+  // 以下为按你账上实际到账分红折算的估计值，请以年报方案为准逐年订正
+  '601939': { id: '601939', name: '建设银行', shares: 0, avgCost: 0, annualDividend: 0.400, link: '' },
+  '600886': { id: '600886', name: '国投电力', shares: 0, avgCost: 0, annualDividend: 0.700, link: '' },
+  '600750': { id: '600750', name: '华润江中', shares: 0, avgCost: 0, annualDividend: 0.500, link: '' },
+  '601728': { id: '601728', name: '中国电信', shares: 0, avgCost: 0, annualDividend: 0.380, link: '' }
 };
 const DEFAULT_PRICES = {
   '510880': 3.20, '515180': 1.50, '512890': 1.00, '510300': 4.00, '159915': 2.50
@@ -1057,7 +1095,7 @@ let sortDir = 'desc';
 
 function createDefaultState() {
   return {
-    version: 4,
+    version: DIVIDEND_UNIT_VERSION,
     initialCapital: 0,
     cash: 0,
     funds: JSON.parse(JSON.stringify(DEFAULT_FUNDS)),
@@ -1077,11 +1115,12 @@ function save() {
 }
 
 function migrateFundsFromOldVersion(data) {
+  // v4 及更早：annualDividend 存的是"每10份分红"，需换算为"每份"
   if (data.funds && typeof data.funds === 'object') {
     for (const id in data.funds) {
       const fund = data.funds[id];
       if (fund && typeof fund.annualDividend === 'number' && fund.annualDividend > 0) {
-        fund.annualDividend = fund.annualDividend * 10;
+        fund.annualDividend = round3(fund.annualDividend / 10);
       }
     }
   }
@@ -1107,11 +1146,11 @@ function loadState() {
     try {
       const p = JSON.parse(saved);
       if (p && p.funds && typeof p.cash === 'number') {
-        if (!p.version || p.version < 4) {
+        if (!p.version || p.version < DIVIDEND_UNIT_VERSION) {
           migrateFundsFromOldVersion(p);
         }
         state = {
-          version: 4,
+          version: DIVIDEND_UNIT_VERSION,
           initialCapital: typeof p.initialCapital === 'number' ? p.initialCapital : 0,
           cash: p.cash,
           funds: mergeFunds(p.funds),
@@ -1143,7 +1182,10 @@ function loadState() {
             if (typeof item.shares === 'number') s.funds[id].shares = item.shares;
             if (typeof item.avgCost === 'number') s.funds[id].avgCost = item.avgCost;
             if (typeof item.cost === 'number') s.funds[id].avgCost = item.cost;
-            if (typeof item.annualDividend === 'number') s.funds[id].annualDividend = item.annualDividend * 10;
+            // 【修正】旧版遗留数据里 annualDividend 是"每10份分红"，换算为"每份"
+            if (typeof item.annualDividend === 'number' && item.annualDividend > 0) {
+              s.funds[id].annualDividend = round3(item.annualDividend / 10);
+            }
           }
         }
         if (data.prices) {
@@ -1404,7 +1446,7 @@ function renderYieldTarget() {
     hasData = true;
 
     const price = state.prices[id] || 0;
-    const perShareDiv = annualDiv / 10;
+    const perShareDiv = annualDiv;   // 【修正】annualDividend 语义 = 每份年分红（元/份），不再除以 10
     const currentYield = price > 0 ? (perShareDiv / price * 100) : null;
 
     html += '<tr>';
@@ -1485,6 +1527,9 @@ function renderAccount() {
   const totalAsset = getTotalAsset();
   const stockVal = getStockValue();
   let totalFloatProfit = 0;
+  // 【新增】为「预计年分红收入 / 组合分红率」累计
+  let totalAnnualDividend = 0;
+  let totalHoldCost = 0;
 
   document.getElementById('totalAssetDisplay').textContent = fmtMoney(totalAsset);
   document.getElementById('cashDisplay').textContent = fmtMoney(state.cash);
@@ -1535,9 +1580,12 @@ function renderAccount() {
     const floatProfit = (price - f.avgCost) * shares;
     const profitRate = f.avgCost && shares ? (floatProfit / (f.avgCost * shares) * 100) : 0;
     const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
-    const costYield = f.avgCost > 0 ? ((f.annualDividend / 10) / f.avgCost * 100) : 0;
+    const costYield = f.avgCost > 0 ? ((f.annualDividend || 0) / f.avgCost * 100) : 0;   // 【修正】不再除以 10
     const realized = stats.realizedPNL + stats.totalDividend;
     totalFloatProfit += floatProfit;
+    // 【新增】预计年分红收入 = 份额 × 每份年分红；并累计持仓成本
+    totalAnnualDividend += shares * (f.annualDividend || 0);
+    totalHoldCost += f.avgCost * shares;
 
     rows.push({
       id: id,
@@ -1598,6 +1646,26 @@ function renderAccount() {
 
   fpEl.textContent = (totalFloatProfit >= 0 ? '+' : '') + fmtMoney(totalFloatProfit);
   fpEl.className = totalFloatProfit >= 0 ? 'profit' : 'loss';
+
+  // 【新增】渲染「预计年分红收入」与「组合分红率（成本口径）」
+  const annIncEl = document.getElementById('annualDividendIncome');
+  if (annIncEl) {
+    annIncEl.textContent = fmtMoney(totalAnnualDividend);
+    const subEl = document.getElementById('annualDividendIncomeSub');
+    if (subEl) {
+      subEl.textContent = totalHoldCost > 0 ? ('持仓成本 ' + fmtMoney(totalHoldCost)) : '按「每份年分红」估算';
+    }
+  }
+  const portYieldEl = document.getElementById('portfolioCostYield');
+  if (portYieldEl) {
+    const portYield = totalHoldCost > 0 ? (totalAnnualDividend / totalHoldCost * 100) : 0;
+    portYieldEl.textContent = portYield.toFixed(2) + '%';
+    const psubEl = document.getElementById('portfolioCostYieldSub');
+    if (psubEl) {
+      const mv = stockVal > 0 ? (totalAnnualDividend / stockVal * 100) : 0;
+      psubEl.textContent = '现价口径 ' + mv.toFixed(2) + '%';
+    }
+  }
 
   updateSortIndicators();
 
@@ -2598,7 +2666,7 @@ function exportHoldingsCSV() {
     const stats = computeFundStats(id);
     const realized = stats.realizedPNL + stats.totalDividend;
     const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100).toFixed(2) + '%' : '0.00%';
-    const costYield = f.avgCost > 0 ? ((f.annualDividend / 10) / f.avgCost * 100).toFixed(2) + '%' : '0.00%';
+    const costYield = f.avgCost > 0 ? ((f.annualDividend || 0) / f.avgCost * 100).toFixed(2) + '%' : '0.00%';   // 【修正】不再除以 10
     rows.push([id, f.name, f.shares.toFixed(2), f.avgCost.toFixed(3), price.toFixed(3), marketValue.toFixed(2), floatProfit.toFixed(2), realized.toFixed(2), cumYield, costYield]);
   }
   downloadCSV('hongli-holdings.csv', headers, rows);
@@ -3089,8 +3157,8 @@ function openFundDetail(id) {
   const profit = fund.avgCost ? (price - fund.avgCost) * (fund.shares || 0) : 0;
   const stats = computeFundStats(id);
   const cumYield = marketValue > 0 ? (stats.totalDividend / marketValue * 100) : 0;
-  const currentYield = price > 0 ? ((fund.annualDividend / 10) / price * 100) : 0;
-  const costYield = fund.avgCost > 0 ? ((fund.annualDividend / 10) / fund.avgCost * 100) : 0;
+  const currentYield = price > 0 ? ((fund.annualDividend || 0) / price * 100) : 0;      // 【修正】不再除以 10
+  const costYield = fund.avgCost > 0 ? ((fund.annualDividend || 0) / fund.avgCost * 100) : 0;   // 【修正】不再除以 10
 
   const html = '<div class="modal-info-grid">' +
     '<div class="modal-info-item"><div class="label">当前价</div><div class="value">' + fmtPrice(price) + '</div></div>' +
